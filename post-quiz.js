@@ -19,6 +19,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { TwitterApi } from "twitter-api-v2";
+import pg from "pg";
 
 function requireEnv(name) {
   const val = process.env[name];
