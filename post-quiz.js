@@ -38,10 +38,24 @@ async function main() {
   const xAccessToken = dryRun ? process.env.X_ACCESS_TOKEN : requireEnv("X_ACCESS_TOKEN");
   const xAccessSecret = dryRun ? process.env.X_ACCESS_SECRET : requireEnv("X_ACCESS_SECRET");
 
+ // Maps each scheduled posting hour (in ET) to a content type, per your plan
+  const scheduleMap = {
+    7: "math",    // 7:30 AM
+    9: "trivia",  // 9:00 AM
+    12: "riddle", // 12:15 PM
+    15: "math",   // 3:00 PM
+    17: "trivia", // 5:30 PM
+    20: "riddle", // 8:00 PM
+    22: "math",   // 10:00 PM
+  };
+
   const types = ["math", "trivia", "riddle"];
   let postType = (process.env.POST_TYPE || "mixed").toLowerCase();
   if (postType === "mixed") {
-    postType = types[new Date().getUTCHours() % types.length];
+    // Convert current UTC hour to ET hour (EDT = UTC-4, EST = UTC-5)
+    // Adjust the "4" below to "5" if it's currently EST (winter months)
+    const etHour = (new Date().getUTCHours() - 4 + 24) % 24;
+    postType = scheduleMap[etHour] || types[etHour % types.length];
   }
   if (!types.includes(postType)) {
     console.error(`Invalid POST_TYPE "${postType}". Must be one of: ${types.join(", ")}, mixed`);
