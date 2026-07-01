@@ -61,11 +61,26 @@ async function main() {
     const etMinute = now.getUTCMinutes();
     const key = `${etHour}:${etMinute}`;
 
-    if (!scheduleMap[key]) {
-      console.log(`No scheduled post for ${key} ET. Skipping.`);
+    // Allow a 30-minute window around each scheduled time
+    const scheduled = [
+      { h: 7, m: 30, type: "math" },
+      { h: 9, m: 0, type: "trivia" },
+      { h: 12, m: 15, type: "riddle" },
+      { h: 15, m: 0, type: "math" },
+      { h: 17, m: 30, type: "trivia" },
+      { h: 20, m: 0, type: "riddle" },
+      { h: 22, m: 0, type: "math" },
+    ];
+
+    const match = scheduled.find(
+      (s) => s.h === etHour && Math.abs(s.m - etMinute) <= 30
+    );
+
+    if (!match) {
+      console.log(`No scheduled post for ${etHour}:${etMinute} ET. Skipping.`);
       process.exit(0);
     }
-    postType = scheduleMap[key];
+    postType = match.type;
   }
   if (!types.includes(postType)) {
     console.error(`Invalid POST_TYPE "${postType}". Must be one of: ${types.join(", ")}, mixed`);
