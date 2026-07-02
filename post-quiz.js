@@ -56,28 +56,25 @@ async function main() {
 
   if (postType === "mixed") {
     const now = new Date();
-    // Convert UTC to ET (EDT = UTC-4; change to 5 during EST/winter)
-    const etHour = (now.getUTCHours() - 4 + 24) % 24;
-    const etMinute = now.getUTCMinutes();
-    const key = `${etHour}:${etMinute}`;
+    const utcHour = now.getUTCHours();
+    const utcMinute = now.getUTCMinutes();
 
-    // Allow a 30-minute window around each scheduled time
     const scheduled = [
-      { h: 7, m: 30, type: "math" },
-      { h: 9, m: 0, type: "trivia" },
-      { h: 12, m: 15, type: "riddle" },
-      { h: 15, m: 0, type: "math" },
-      { h: 17, m: 30, type: "trivia" },
-      { h: 20, m: 0, type: "riddle" },
-      { h: 22, m: 0, type: "math" },
+      { h: 0,  m: 0,  type: "math" },
+      { h: 3,  m: 30, type: "trivia" },
+      { h: 7,  m: 0,  type: "riddle" },
+      { h: 10, m: 30, type: "math" },
+      { h: 14, m: 0,  type: "trivia" },
+      { h: 17, m: 30, type: "riddle" },
+      { h: 21, m: 0,  type: "math" },
     ];
 
     const match = scheduled.find(
-      (s) => s.h === etHour && Math.abs(s.m - etMinute) <= 30
+      (s) => s.h === utcHour && Math.abs(s.m - utcMinute) <= 30
     );
 
     if (!match) {
-      console.log(`No scheduled post for ${etHour}:${etMinute} ET. Skipping.`);
+      console.log(`No scheduled post for ${utcHour}:${utcMinute} UTC. Skipping.`);
       process.exit(0);
     }
     postType = match.type;
