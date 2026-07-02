@@ -70,7 +70,7 @@ async function main() {
     ];
 
     const match = scheduled.find(
-      (s) => s.h === utcHour && Math.abs(s.m - utcMinute) <= 30
+      (s) => s.h === utcHour && Math.abs(s.m - utcMinute) <= 15
     );
 
     if (!match) {
