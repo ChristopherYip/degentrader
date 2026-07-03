@@ -100,26 +100,34 @@ async function main() {
     educational: "educational and informative",
   }[tone] || "fun and engaging";
 
-  const prompt = `Generate one ${postType} question post for X (Twitter) for an account called @${handle}.
+const ctaOptions = [
+    "Drop your answer below! 👇",
+    "Guess before the reply reveals it! 👀",
+    "What's your answer? 🧠",
+    "Reply with your guess!",
+  ];
+  const cta = ctaOptions[Math.floor(Math.random() * ctaOptions.length)];
 
+  const prompt = `Generate one ${postType} question post for X (Twitter) for an account called @${handle}.
+  
 Rules:
 - Start with a relevant emoji  
 - Ask an engaging ${postType} question
 - Do NOT include multiple choice options in the post
-- End with "Drop your answer below! 👇"
+- End with "${cta}"
 - Tone: ${toneLabel}
 - Difficulty: ${difficultyLabel}
 - Maximum 240 characters total
 - No hashtags
 
-Then on a new line write "OPTIONS:" followed by 4 multiple choice options labeled A) B) C) D) as a short follow-up reply (max 200 chars total for all 4 options combined).
+Then on a new line write "OPTIONS:" followed by exactly 4 short multiple choice options, each 25 characters or less, separated by "||" with no labels (example: OPTIONS: 12||24||36||48).
 
 Then on a new line write "ANSWER:" followed by the correct letter and a one-sentence explanation.
 
 Return ONLY:
 Line 1: the tweet text
 Blank line
-OPTIONS: A) ... B) ... C) ... D) ...
+OPTIONS: option1||option2||option3||option4
 Blank line  
 ANSWER: [letter] - [explanation]
 Nothing else.`;
@@ -142,8 +150,11 @@ Nothing else.`;
 
   const parts = fullText.split(/\n\s*\n/);
   const tweetText = parts[0].trim();
-  const optionsMatch = fullText.match(/OPTIONS:\s*(.+?)(?:\n\s*\n|ANSWER:)/s);
+const optionsMatch = fullText.match(/OPTIONS:\s*(.+?)(?:\n\s*\n|ANSWER:)/s);
   const optionsText = optionsMatch ? optionsMatch[1].trim() : null;
+  const optionsArray = optionsText
+    ? optionsText.split("||").map((o) => o.trim()).filter(Boolean).slice(0, 4)
+    : null;
   const answerMatch = fullText.match(/ANSWER:\s*(.+)/s);
   const answerText = answerMatch ? answerMatch[1].trim() : null;
 
@@ -184,13 +195,26 @@ Nothing else.`;
   const result = await twitter.v2.tweet(tweetText);
   console.log("Posted successfully. Tweet ID:", result.data.id);
 
-  // Post options as immediate reply
-  if (optionsText) {
+// Post options as an immediate reply, using a native poll (falls back to plain text if the poll fails)
+  if (optionsArray && optionsArray.length >= 2) {
     try {
-      const optionsReply = await twitter.v2.reply(optionsText, result.data.id);
-      console.log("Posted options reply. Reply ID:", optionsReply.data.id);
-    } catch (optErr) {
-      console.error("Failed to post options reply:", optErr.message);
+      const pollReply = await twitter.v2.tweet({
+        text: "Which is it? 🤔",
+        reply: { in_reply_to_tweet_id: result.data.id },
+        poll: { options: optionsArray, duration_minutes: 120 },
+      });
+      console.log("Posted poll reply. Reply ID:", pollReply.data.id);
+    } catch (pollErr) {
+      console.error("Failed to post poll reply, falling back to text:", pollErr.message);
+      try {
+        const fallbackText = optionsArray
+          .map((o, i) => `${String.fromCharCode(65 + i)}) ${o}`)
+          .join("  ");
+        const optionsReply = await twitter.v2.reply(fallbackText, result.data.id);
+        console.log("Posted fallback text options reply. Reply ID:", optionsReply.data.id);
+      } catch (fallbackErr) {
+        console.error("Fallback options reply also failed:", fallbackErr.message);
+      }
     }
   }
 
