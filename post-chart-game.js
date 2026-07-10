@@ -241,23 +241,28 @@ async function maybePostNewGame(db) {
   const questionId = question.data.id;
   console.log(`Chart posted: ${questionId}`);
 
-  // Poll reply with shuffled options (poll options max 25 chars)
-  const options = shuffle([answer, ...pickDecoys(answer)]).map((t) =>
-    t.name.slice(0, 25)
-  );
-  await twitterClient.v2.reply(
-    `Which company is it? 🤔`,
-    questionId,
-    { poll: { options, duration_minutes: 120 } }
-  );
-  console.log('Poll reply posted.');
-
+ // Save FIRST so the answer + dedup always work, even if the poll fails
   await db.query(
     `INSERT INTO chart_games (tweet_id, symbol, company, pct_change, posted_at, answered)
      VALUES ($1, $2, $3, $4, NOW(), FALSE)`,
     [questionId, answer.symbol, answer.name, percentChange(prices)]
   );
   console.log('Game saved to database.');
+
+  // Poll reply with shuffled options (poll options max 25 chars)
+  const options = shuffle([answer, ...pickDecoys(answer)]).map((t) =>
+    t.name.slice(0, 25)
+  );
+  try {
+    await twitterClient.v2.reply(
+      `Which company is it? 🤔`,
+      questionId,
+      { poll: { options, duration_minutes: 120 } }
+    );
+    console.log('Poll reply posted.');
+  } catch (err) {
+    console.error('Poll reply failed:', JSON.stringify(err.data || err.message));
+  }
 }
 
 // ============ ANSWER DUE GAMES ============
