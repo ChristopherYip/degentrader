@@ -1,5 +1,5 @@
 // post-chart-game.js
-// Guess the Chart game for @DailyBrainDrop
+// Guess the Chart game for @TheDegenTraderX
 // - Posts an unlabeled 6-month price chart of a mystery stock
 // - Immediately replies with a native X poll (4 company options, 120 min)
 // - Reveals the answer in a reply 2 hours later
