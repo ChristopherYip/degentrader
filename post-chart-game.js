@@ -6,8 +6,9 @@
 // Runs on the same */15 cron as your other scripts. Safe to run every tick:
 // it only posts inside its UTC slots and only answers when a game is due.
 
-const { TwitterApi } = require('twitter-api-v2');
-const { Client } = require('pg');
+import { TwitterApi } from 'twitter-api-v2';
+import pg from 'pg';
+const { Client } = pg;
 
 // ============ CONFIG ============
 
