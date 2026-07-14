@@ -23,7 +23,7 @@ const DRAWDOWN_THRESHOLD = 30;   // % below watermark high
 const MAX_ALERTS_PER_SCAN = 3;   // hard cap on tweets per scan
 const MAX_SPREAD_PCT = 2;        // skip extended-hours quotes with bid/ask spread wider than this
 const MIN_PRICE = 5;             // ignore stocks under $5
-const QUOTE_CHUNK_SIZE = 150;    // symbols per FMP batch call
+const QUOTE_CHUNK_SIZE = 300;    // symbols per FMP batch call (tested: 250+ works in one call)
 
 // Cooldowns (hours) per alert type per symbol — prevents re-alerting the same thing
 const COOLDOWN_HOURS = {
@@ -70,8 +70,8 @@ function decideSession() {
   // Premarket scan: 8:30–8:44 AM ET (one tick)
   if (hour === 8 && minute >= 30 && minute <= 44) return 'premarket';
 
-  // Intraday scans: :30 tick of each hour, 10:30 AM – 3:30 PM ET
-  if (hour >= 10 && hour <= 15 && minute >= 30 && minute <= 44) return 'intraday';
+  // Intraday scans: 10:30 AM, 12:30 PM, 2:30 PM ET
+  if ((hour === 10 || hour === 12 || hour === 14) && minute >= 30 && minute <= 44) return 'intraday';
 
   // Post-market scan: 5:00–5:14 PM ET (one tick)
   if (hour === 17 && minute >= 0 && minute <= 14) return 'postmarket';
