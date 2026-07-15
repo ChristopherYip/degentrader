@@ -24,10 +24,7 @@ const INDICES = [
 
 // High-visibility tickers fintwit actually posts about
 const WATCHLIST = [
-  'NVDA','AAPL','MSFT','AMZN','GOOGL','META','TSLA','AMD','AVGO','NFLX',
-  'JPM','GS','BAC','XOM','CVX','COIN','MSTR','PLTR','SMCI','GME',
-  'AMC','HOOD','SOFI','INTC','MU','TSM','BABA','UNH','LLY','PFE',
-  'DIS','BA','CRM','ORCL','UBER','ABNB','SHOP','PYPL','ARM','SNOW',
+  'NVDA','TSLA','AAPL','META','AMD','PLTR','COIN',
 ];
 
 const INDEX_MOVE_THRESHOLD = 0.75;  // % intraday move on an index worth alerting
@@ -49,11 +46,18 @@ function isUSMarketHours() {
 // ---------- FMP ----------
 
 async function fetchQuotes(symbols) {
-  const url = `https://financialmodelingprep.com/stable/quote?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${FMP_API_KEY}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`FMP quote request failed: ${res.status}`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
+  const quotes = [];
+  for (const symbol of symbols) {
+    const url = `https://financialmodelingprep.com/stable/quote?symbol=${encodeURIComponent(symbol)}&apikey=${FMP_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error(`FMP quote failed for ${symbol}: ${res.status}`);
+      continue;
+    }
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) quotes.push(data[0]);
+  }
+  return quotes;
 }
 
 function pct(q) {
