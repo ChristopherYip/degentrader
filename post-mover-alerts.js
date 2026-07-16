@@ -656,6 +656,7 @@ async function fmpGet(path, params = {}) {
     throw new Error(`FMP ${path} failed: ${res.status} — ${body.slice(0, 300)}`);
   }
   return res.json();
+}
 
 async function getQuotes(symbols) {
   const results = [];
