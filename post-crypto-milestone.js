@@ -15,8 +15,6 @@ const COINS = [
   { symbol: 'ETHUSD', name: 'Ethereum', hashtag: '#Ethereum', cashtag: '$ETH', step: 100 },
 ];
 
-const COOLDOWN_MINUTES = 120; // don't post about the same coin more than once per 2 hours
-
 // ---------- Clients ----------
 
 const twitter = new TwitterApi({
@@ -145,20 +143,6 @@ async function run() {
           'UPDATE crypto_milestones SET last_price = $2, last_bucket = $3, updated_at = NOW() WHERE symbol = $1',
           [coin.symbol, price, bucket]
         );
-        continue;
-      }
-
-      // Cooldown check: swallow the cross silently to avoid whipsaw spam
-      const lastPosted = prev.last_posted_at ? new Date(prev.last_posted_at) : null;
-      const cooldownActive =
-        lastPosted && (Date.now() - lastPosted.getTime()) / 60000 < COOLDOWN_MINUTES;
-
-      if (cooldownActive) {
-        await db.query(
-          'UPDATE crypto_milestones SET last_price = $2, last_bucket = $3, updated_at = NOW() WHERE symbol = $1',
-          [coin.symbol, price, bucket]
-        );
-        console.log(`${coin.symbol}: crossed milestone but cooldown active, skipping post.`);
         continue;
       }
 
