@@ -1,7 +1,10 @@
 // post-crypto-milestone.js
 // "JUST IN" alerts when BTC crosses a $1,000 milestone or ETH crosses a $100 milestone.
+// Includes a 1-minute intraday chart image: green line if crossing up, red if crossing down,
+// with a gold dashed line marking the milestone price.
 // Runs every 5 minutes via Railway cron: */5 * * * *
 // Creates its own DB table on first run. First run per coin records state silently (no post).
+// No cooldown: every milestone cross posts.
 
 import pg from 'pg';
 const { Client } = pg;
@@ -14,6 +17,15 @@ const COINS = [
   { symbol: 'BTCUSD', name: 'Bitcoin', hashtag: '#Bitcoin', cashtag: '$BTC', step: 1000 },
   { symbol: 'ETHUSD', name: 'Ethereum', hashtag: '#Ethereum', cashtag: '$ETH', step: 100 },
 ];
+
+const CHART_MINUTES = 120; // how much intraday history to show on the chart
+
+// Brand colors
+const BG_NAVY = '#0a1628';
+const GOLD = '#fbbf24';
+const GREEN = '#22c55e';
+const RED = '#ef4444';
+const MUTED = '#94a3b8';
 
 // ---------- Clients ----------
 
@@ -45,6 +57,117 @@ async function getPrice(symbol) {
     throw new Error(`FMP ${symbol}: no price in response: ${JSON.stringify(data).slice(0, 200)}`);
   }
   return quote.price;
+}
+
+// Fetch recent intraday candles, newest-first from FMP, returned oldest-first.
+// Tries 1min, falls back to 5min.
+async function getIntraday(symbol) {
+  for (const interval of ['1min', '5min']) {
+    try {
+      const url = `https://financialmodelingprep.com/stable/historical-chart/${interval}?symbol=${symbol}&apikey=${process.env.FMP_API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 5) {
+        const count = interval === '1min' ? CHART_MINUTES : Math.ceil(CHART_MINUTES / 5);
+        return { interval, points: data.slice(0, count).reverse() };
+      }
+    } catch (err) {
+      console.error(`FMP intraday ${interval} ${symbol} failed:`, err.message);
+    }
+  }
+  return null;
+}
+
+// Render the chart via QuickChart, return a PNG Buffer (or null on failure).
+async function buildChartImage(coin, intraday, direction, milestone) {
+  try {
+    const { interval, points } = intraday;
+    const labels = points.map((p) => p.date.slice(11, 16)); // "HH:MM"
+    const prices = points.map((p) => p.close);
+    const lineColor = direction === 'up' ? GREEN : RED;
+    const fillColor = direction === 'up' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
+
+    const chartConfig = {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            data: prices,
+            borderColor: lineColor,
+            backgroundColor: fillColor,
+            fill: true,
+            pointRadius: 0,
+            borderWidth: 3,
+            lineTension: 0.1,
+          },
+        ],
+      },
+      options: {
+        legend: { display: false },
+        title: {
+          display: true,
+          text: `${coin.name} — ${interval} chart`,
+          fontColor: GOLD,
+          fontSize: 20,
+        },
+        scales: {
+          xAxes: [
+            {
+              ticks: { fontColor: MUTED, maxTicksLimit: 6, fontSize: 14 },
+              gridLines: { display: false },
+            },
+          ],
+          yAxes: [
+            {
+              ticks: { fontColor: MUTED, fontSize: 14 },
+              gridLines: { color: 'rgba(148,163,184,0.15)' },
+            },
+          ],
+        },
+        annotation: {
+          annotations: [
+            {
+              type: 'line',
+              mode: 'horizontal',
+              scaleID: 'y-axis-0',
+              value: milestone,
+              borderColor: GOLD,
+              borderWidth: 2,
+              borderDash: [6, 6],
+              label: {
+                enabled: true,
+                content: fmt(milestone),
+                backgroundColor: GOLD,
+                fontColor: BG_NAVY,
+                fontStyle: 'bold',
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    const res = await fetch('https://quickchart.io/chart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chart: chartConfig,
+        width: 1200,
+        height: 675,
+        backgroundColor: BG_NAVY,
+        format: 'png',
+        version: '2',
+      }),
+    });
+    if (!res.ok) throw new Error(`QuickChart HTTP ${res.status}`);
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch (err) {
+    console.error(`${coin.symbol}: chart generation failed:`, err.message);
+    return null;
+  }
 }
 
 async function generateTake(coin, milestone, direction, price) {
@@ -146,7 +269,7 @@ async function run() {
         continue;
       }
 
-      // Milestone crossed and cooldown clear
+      // Milestone crossed
       const direction = bucket > prevBucket ? 'up' : 'down';
       const milestone = direction === 'up' ? bucket * coin.step : prevBucket * coin.step;
 
@@ -156,12 +279,26 @@ async function run() {
         [coin.symbol, price, bucket]
       );
 
+      // Build chart image (null if anything fails — we post text-only in that case)
+      const intraday = await getIntraday(coin.symbol);
+      const chartBuffer = intraday
+        ? await buildChartImage(coin, intraday, direction, milestone)
+        : null;
+
       const take = await generateTake(coin, milestone, direction, price);
       const tweet = buildTweet(coin, milestone, direction, take);
 
       try {
-        await twitter.v2.tweet(tweet);
-        console.log(`${coin.symbol}: posted milestone alert (${direction} ${fmt(milestone)})`);
+        if (chartBuffer) {
+          const mediaId = await twitter.v1.uploadMedia(chartBuffer, {
+            mimeType: 'image/png',
+          });
+          await twitter.v2.tweet({ text: tweet, media: { media_ids: [mediaId] } });
+          console.log(`${coin.symbol}: posted milestone alert with chart (${direction} ${fmt(milestone)})`);
+        } else {
+          await twitter.v2.tweet(tweet);
+          console.log(`${coin.symbol}: posted milestone alert, text-only (${direction} ${fmt(milestone)})`);
+        }
       } catch (err) {
         console.error(`${coin.symbol}: tweet failed (state already saved):`, err.message);
       }
