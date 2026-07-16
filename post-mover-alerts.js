@@ -651,9 +651,11 @@ function chunk(arr, size) {
 async function fmpGet(path, params = {}) {
   const qs = new URLSearchParams({ ...params, apikey: process.env.FMP_API_KEY });
   const res = await fetch(`${FMP_BASE}/${path}?${qs}`);
-  if (!res.ok) throw new Error(`FMP ${path} failed: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`FMP ${path} failed: ${res.status} — ${body.slice(0, 300)}`);
+  }
   return res.json();
-}
 
 async function getQuotes(symbols) {
   const results = [];
