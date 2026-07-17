@@ -3,8 +3,12 @@
 // Includes a 1-minute intraday chart image: green line if crossing up, red if crossing down,
 // with a gold dashed line marking the milestone price.
 // Runs every 5 minutes via Railway cron: */5 * * * *
-// Creates its own DB table on first run. First run per coin records state silently (no post).
-// No cooldown: every milestone cross posts.
+//
+// Anti-spam rules (tunable in Config below):
+//   1. Buffer: price must be a set distance PAST the milestone before it counts
+//   2. Min gap: at most one post per coin every MIN_GAP_MINUTES
+//   3. Dedupe: same milestone + same direction won't repost within REPEAT_HOURS
+// Blocked crosses are swallowed silently (no stale alerts later).
 
 import pg from 'pg';
 const { Client } = pg;
@@ -14,11 +18,13 @@ import fetch from 'node-fetch';
 // ---------- Config ----------
 
 const COINS = [
-  { symbol: 'BTCUSD', name: 'Bitcoin', hashtag: '#Bitcoin', cashtag: '$BTC', step: 1000 },
-  { symbol: 'ETHUSD', name: 'Ethereum', hashtag: '#Ethereum', cashtag: '$ETH', step: 100 },
+  { symbol: 'BTCUSD', name: 'Bitcoin', hashtag: '#Bitcoin', cashtag: '$BTC', step: 1000, buffer: 150 },
+  { symbol: 'ETHUSD', name: 'Ethereum', hashtag: '#Ethereum', cashtag: '$ETH', step: 100, buffer: 15 },
 ];
 
-const CHART_MINUTES = 120; // how much intraday history to show on the chart
+const MIN_GAP_MINUTES = 180; // at most one post per coin every 3 hours
+const REPEAT_HOURS = 24;     // same milestone+direction won't repost within 24h
+const CHART_MINUTES = 120;   // how much intraday history to show on the chart
 
 // Brand colors
 const BG_NAVY = '#0a1628';
@@ -26,6 +32,36 @@ const GOLD = '#fbbf24';
 const GREEN = '#22c55e';
 const RED = '#ef4444';
 const MUTED = '#94a3b8';
+
+// Variety pools so back-to-back posts don't sound alike
+const STYLE_ANGLES = [
+  'rocket/space metaphor',
+  'casino/poker metaphor',
+  'sports/championship metaphor',
+  'weather/storm metaphor',
+  'gym/heavy-lifting metaphor',
+  'street-racing/speed metaphor',
+  'chess/strategy metaphor',
+  'clearance-sale/shopping metaphor',
+];
+
+const FALLBACK_UP = [
+  'Bulls are wide awake. Momentum looks hungry for the next level. 🚀',
+  'Another level cleared like it was nothing. Eyes up. 📈',
+  'The tape does not lie — buyers showed up in force.',
+  'Resistance? Never heard of her. 🚀',
+];
+
+const FALLBACK_DOWN = [
+  'Volatility is the price of admission. Degens call this a sale. 👀',
+  'Red candles, calm hands. Some see pain, others see the discount rack.',
+  'Chop happens. Tourists panic, degens window-shop. 🛒',
+  'Gravity check. Weak hands out, patient hands watching. 👀',
+];
+
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
 // ---------- Clients ----------
 
@@ -170,11 +206,16 @@ async function buildChartImage(coin, intraday, direction, milestone) {
   }
 }
 
-async function generateTake(coin, milestone, direction, price) {
+async function generateTake(coin, milestone, direction, price, usedTakes = []) {
+  const styleAngle = pick(STYLE_ANGLES);
   const angle =
     direction === 'up'
-      ? `${coin.name} just broke above ${fmt(milestone)} (now ${fmt(price)}). Write a punchy, bullish 1-2 sentence take. High energy, rocket/moon vibes welcome.`
-      : `${coin.name} just slipped below ${fmt(milestone)} (now ${fmt(price)}). Write a cheeky, degen "buy the dip / discount season" style 1-2 sentence take. Playful, not doom-y.`;
+      ? `${coin.name} just broke above ${fmt(milestone)} (now ${fmt(price)}). Write a punchy, bullish 1-2 sentence take using a ${styleAngle}.`
+      : `${coin.name} just slipped below ${fmt(milestone)} (now ${fmt(price)}). Write a cheeky, degen "buy the dip / discount season" style 1-2 sentence take using a ${styleAngle}. Playful, not doom-y.`;
+
+  const avoidClause = usedTakes.length
+    ? ` IMPORTANT: This account just posted the following, so your take must use completely different wording, imagery, and themes: ${usedTakes.map((t) => `"${t}"`).join(' | ')}`
+    : '';
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -190,7 +231,7 @@ async function generateTake(coin, milestone, direction, price) {
         messages: [
           {
             role: 'user',
-            content: `You write for @DegenTrader, a high-energy WallStreetBets-style crypto/stocks X account. ${angle} Max 140 characters. No hashtags, no cashtags, no quotes around the text, no emojis at the start. Do not give financial advice or tell people to buy/sell.`,
+            content: `You write for @DegenTrader, a high-energy WallStreetBets-style crypto/stocks X account. ${angle} Max 140 characters. No hashtags, no cashtags, no quotes around the text, no emojis at the start. Do not give financial advice or tell people to buy/sell.${avoidClause}`,
           },
         ],
       }),
@@ -202,10 +243,8 @@ async function generateTake(coin, milestone, direction, price) {
     console.error('Claude API failed, using fallback take:', err.message);
   }
 
-  // Fallbacks if the API call fails
-  return direction === 'up'
-    ? 'Bulls are wide awake. Momentum looks hungry for the next level. 🚀'
-    : 'Volatility is the price of admission. Degens call this a sale. 👀';
+  // Randomized fallbacks if the API call fails
+  return direction === 'up' ? pick(FALLBACK_UP) : pick(FALLBACK_DOWN);
 }
 
 function buildTweet(coin, milestone, direction, take) {
@@ -235,15 +274,18 @@ async function run() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await db.query(`ALTER TABLE crypto_milestones ADD COLUMN IF NOT EXISTS last_posted_milestone NUMERIC`);
+  await db.query(`ALTER TABLE crypto_milestones ADD COLUMN IF NOT EXISTS last_posted_direction TEXT`);
+
+  const usedTakes = [];
 
   for (const coin of COINS) {
     try {
       const price = await getPrice(coin.symbol);
-      const bucket = Math.floor(price / coin.step);
-      console.log(`${coin.symbol}: price ${fmt(price)}, bucket ${bucket}`);
+      console.log(`${coin.symbol}: price ${fmt(price)}`);
 
       const { rows } = await db.query(
-        'SELECT last_price, last_bucket, last_posted_at FROM crypto_milestones WHERE symbol = $1',
+        'SELECT last_price, last_bucket, last_posted_at, last_posted_milestone, last_posted_direction FROM crypto_milestones WHERE symbol = $1',
         [coin.symbol]
       );
 
@@ -251,7 +293,7 @@ async function run() {
       if (rows.length === 0) {
         await db.query(
           'INSERT INTO crypto_milestones (symbol, last_price, last_bucket) VALUES ($1, $2, $3)',
-          [coin.symbol, price, bucket]
+          [coin.symbol, price, Math.floor(price / coin.step)]
         );
         console.log(`${coin.symbol}: first run, state recorded, no post.`);
         continue;
@@ -260,23 +302,61 @@ async function run() {
       const prev = rows[0];
       const prevBucket = Number(prev.last_bucket);
 
-      // No milestone crossed: just refresh price
-      if (bucket === prevBucket) {
+      // Buffered cross detection: price must be `buffer` dollars PAST the line to count
+      const upBucket = Math.floor((price - coin.buffer) / coin.step);
+      const downBucket = Math.floor((price + coin.buffer) / coin.step);
+
+      let direction = null;
+      let newBucket = prevBucket;
+      let milestone = null;
+
+      if (upBucket > prevBucket) {
+        direction = 'up';
+        newBucket = upBucket;
+        milestone = upBucket * coin.step;
+      } else if (downBucket < prevBucket) {
+        direction = 'down';
+        newBucket = downBucket;
+        milestone = (downBucket + 1) * coin.step;
+      }
+
+      // No confirmed cross: refresh price only (bucket stays put so a later cross can fire)
+      if (!direction) {
         await db.query(
-          'UPDATE crypto_milestones SET last_price = $2, last_bucket = $3, updated_at = NOW() WHERE symbol = $1',
-          [coin.symbol, price, bucket]
+          'UPDATE crypto_milestones SET last_price = $2, updated_at = NOW() WHERE symbol = $1',
+          [coin.symbol, price]
         );
         continue;
       }
 
-      // Milestone crossed
-      const direction = bucket > prevBucket ? 'up' : 'down';
-      const milestone = direction === 'up' ? bucket * coin.step : prevBucket * coin.step;
+      // Anti-spam checks
+      const lastPosted = prev.last_posted_at ? new Date(prev.last_posted_at) : null;
+      const minsSincePost = lastPosted ? (Date.now() - lastPosted.getTime()) / 60000 : Infinity;
+      const gapBlocked = minsSincePost < MIN_GAP_MINUTES;
+      const dedupeBlocked =
+        Number(prev.last_posted_milestone) === milestone &&
+        prev.last_posted_direction === direction &&
+        minsSincePost < REPEAT_HOURS * 60;
+
+      if (gapBlocked || dedupeBlocked) {
+        // Swallow the cross silently: update state so it won't fire later as a stale alert
+        await db.query(
+          'UPDATE crypto_milestones SET last_price = $2, last_bucket = $3, updated_at = NOW() WHERE symbol = $1',
+          [coin.symbol, price, newBucket]
+        );
+        console.log(
+          `${coin.symbol}: crossed ${direction} ${fmt(milestone)} but skipped (${gapBlocked ? 'min gap' : 'same milestone within 24h'}).`
+        );
+        continue;
+      }
 
       // Save state BEFORE tweeting (missed alert beats duplicate posts)
       await db.query(
-        'UPDATE crypto_milestones SET last_price = $2, last_bucket = $3, last_posted_at = NOW(), updated_at = NOW() WHERE symbol = $1',
-        [coin.symbol, price, bucket]
+        `UPDATE crypto_milestones
+         SET last_price = $2, last_bucket = $3, last_posted_at = NOW(),
+             last_posted_milestone = $4, last_posted_direction = $5, updated_at = NOW()
+         WHERE symbol = $1`,
+        [coin.symbol, price, newBucket, milestone, direction]
       );
 
       // Build chart image (null if anything fails — we post text-only in that case)
@@ -285,7 +365,8 @@ async function run() {
         ? await buildChartImage(coin, intraday, direction, milestone)
         : null;
 
-      const take = await generateTake(coin, milestone, direction, price);
+      const take = await generateTake(coin, milestone, direction, price, usedTakes);
+      usedTakes.push(take);
       const tweet = buildTweet(coin, milestone, direction, take);
 
       try {
