@@ -10,9 +10,10 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "twitter-api-v2": "^1.18.2",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "yahoo-finance2": "^4.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22"
   }
 }
