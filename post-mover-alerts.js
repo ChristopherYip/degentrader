@@ -1,4 +1,4 @@
-/ post-mover-alerts.js  (v2 — Yahoo Finance edition, no API key needed)
+// post-mover-alerts.js  (v2 — Yahoo Finance edition, no API key needed)
 // DegenTrader mover alerts:
 //   - Premarket movers (±3%, Yahoo preMarketChangePercent)
 //   - Intraday movers (±3%, regularMarketChangePercent)
