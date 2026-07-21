@@ -653,14 +653,23 @@ function sleep(ms) {
 }
  
 async function getQuotes(symbols) {
+  try {
+    const one = await yahooFinance.quote('AAPL', {}, { validateResult: false });
+    console.log('Single AAPL test:', one ? JSON.stringify(one).slice(0, 200) : 'returned undefined');
+  } catch (e) {
+    console.error('Single AAPL test failed:', String(e).slice(0, 300));
+  }
+
   const results = [];
   const batches = chunk(symbols, QUOTE_CHUNK_SIZE);
   for (let i = 0; i < batches.length; i++) {
     try {
       const data = await yahooFinance.quote(batches[i], {}, { validateResult: false });
+      console.log(`Batch ${i + 1}: type=${Array.isArray(data) ? 'array' : typeof data}, length=${Array.isArray(data) ? data.length : 'n/a'}`);
       if (Array.isArray(data)) results.push(...data);
+      else if (data) console.log('Raw sample:', JSON.stringify(data).slice(0, 300));
     } catch (err) {
-      console.error(`Yahoo quote batch ${i + 1}/${batches.length} failed:`, err.message);
+      console.error(`Yahoo batch ${i + 1} error:`, String(err).slice(0, 300));
     }
     if (i < batches.length - 1) await sleep(CHUNK_DELAY_MS);
   }
