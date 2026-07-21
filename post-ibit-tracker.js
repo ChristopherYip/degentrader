@@ -25,13 +25,11 @@ function inWindow() {
 // ---- fetch + parse Farside flow table ----
 // Returns chronological array of { date: 'YYYY-MM-DD', flow: Number } (flow in US$ millions)
 async function fetchFarside() {
-  const res = await fetch(FARSIDE_URL, {
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml',
-    },
-  });
+  const res = await fetch('https://r.jina.ai/' + FARSIDE_URL, {
+      headers: {
+        'x-respond-with': 'html',
+      },
+    });
   if (!res.ok) throw new Error(`Farside fetch failed: HTTP ${res.status}`);
   const html = await res.text();
 
