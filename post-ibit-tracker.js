@@ -1,6 +1,6 @@
 // post-ibit-tracker.js
 // Daily IBIT (BlackRock) buy/sell tracker for @DegenTrader
-// Data source: Farside Investors daily flow table (US$ millions)
+// Data source: Farside Investors via Jina reader proxy
 // Runs on Railway cron */15 * * * * — posts once per new flow date, evening window ET
 
 import { TwitterApi } from 'twitter-api-v2';
@@ -12,7 +12,7 @@ const { Client } = pg;
 
 const FARSIDE_URL = 'https://farside.co.uk/btc/';
 const FMP_KEY = process.env.FMP_API_KEY;
-const FINK_IMAGE_PATH = './assets/fink.jpg'; // optional — only attached if file exists
+const FINK_IMAGE_PATH = './assets/fink.jpg'; // optional — only attached if file exists and is a valid image
 
 // ---- time window: only attempt between 18:00 and 23:59 ET ----
 function inWindow() {
@@ -22,14 +22,22 @@ function inWindow() {
   return et.getHours() >= 18;
 }
 
-// ---- fetch + parse Farside flow table ----
-// Returns chronological array of { date: 'YYYY-MM-DD', flow: Number } (flow in US$ millions)
+// ---- detect real image type from file bytes (extensions lie) ----
+function detectImageMime(buf) {
+  if (buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
+  if (buf.length > 12 && buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  if (buf.length > 6 && ['GIF87a', 'GIF89a'].includes(buf.slice(0, 6).toString('ascii'))) return 'image/gif';
+  return null;
+}
+
+// ---- fetch + parse Farside flow table (via Jina proxy) ----
 async function fetchFarside() {
   const res = await fetch('https://r.jina.ai/' + FARSIDE_URL, {
-      headers: {
-        'x-respond-with': 'html',
-      },
-    });
+    headers: {
+      'x-respond-with': 'html',
+    },
+  });
   if (!res.ok) throw new Error(`Farside fetch failed: HTTP ${res.status}`);
   const html = await res.text();
 
@@ -42,12 +50,11 @@ async function fetchFarside() {
     );
     if (cells.length < 2) continue;
 
-    // date rows look like "15 Jul 2026"; skip Fee/Total/Average/etc rows
     const dm = cells[0].match(/^(\d{1,2}) ([A-Za-z]{3}) (\d{4})$/);
     if (!dm) continue;
 
     const raw = cells[1]; // IBIT is the first data column
-    if (raw === '-' || raw === '') continue; // data not published yet for that day
+    if (raw === '-' || raw === '') continue;
 
     const neg = raw.includes('(');
     const num = parseFloat(raw.replace(/[(),]/g, ''));
@@ -84,7 +91,7 @@ function buildChartUrl(rows) {
   const labels = rows.map(r =>
     new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   );
-  const values = rows.map(r => r.flow);
+  const values = rows.map(r => Math.round(r.flow * 10) / 10);
   const colors = values.map(v => (v >= 0 ? '#22c55e' : '#ef4444'));
   const config = {
     type: 'bar',
@@ -108,7 +115,7 @@ function buildChartUrl(rows) {
       },
     },
   };
-  return `https://quickchart.io/chart?w=800&h=450&bkg=${encodeURIComponent('#0d1b2a')}&c=${encodeURIComponent(JSON.stringify(config))}`;
+  return `https://quickchart.io/chart?v=3&w=800&h=450&bkg=${encodeURIComponent('#0d1b2a')}&c=${encodeURIComponent(JSON.stringify(config))}`;
 }
 
 function fmtM(n) {
@@ -141,20 +148,32 @@ async function main() {
   const latest = rows[rows.length - 1];
   console.log(`Latest Farside data: ${latest.date} → ${latest.flow} US$m`);
 
-  const existing = await db.query('SELECT 1 FROM ibit_flows WHERE as_of_date = $1', [
-    latest.date,
-  ]);
-  if (existing.rows.length > 0) {
-    console.log('Already processed this date, exiting.');
+  // skip if already successfully posted (unposted rows from failed attempts will retry)
+  const existing = await db.query(
+    'SELECT posted FROM ibit_flows WHERE as_of_date = $1',
+    [latest.date]
+  );
+  if (existing.rows.length > 0 && existing.rows[0].posted) {
+    console.log('Already posted this date, exiting.');
     await db.end();
     return;
   }
 
-  // Save BEFORE posting
+  // upsert BEFORE posting
   await db.query(
-    'INSERT INTO ibit_flows (as_of_date, flow_usd_m, posted) VALUES ($1, $2, FALSE)',
+    `INSERT INTO ibit_flows (as_of_date, flow_usd_m, posted) VALUES ($1, $2, FALSE)
+     ON CONFLICT (as_of_date) DO UPDATE SET flow_usd_m = EXCLUDED.flow_usd_m`,
     [latest.date, latest.flow]
   );
+
+  // freshness guard: don't post data older than ~2 days (e.g. after an outage)
+  const daysOld = (Date.now() - new Date(latest.date + 'T00:00:00Z').getTime()) / 86400000;
+  if (daysOld > 2.5) {
+    console.log(`Data from ${latest.date} is stale (${daysOld.toFixed(1)} days old), marking posted without tweeting.`);
+    await db.query('UPDATE ibit_flows SET posted = TRUE WHERE as_of_date = $1', [latest.date]);
+    await db.end();
+    return;
+  }
 
   if (latest.flow === 0) {
     console.log('Zero flow day, skipping post.');
@@ -172,9 +191,17 @@ async function main() {
     ? `🚨 BREAKING: BlackRock's Bitcoin ETF just BOUGHT ${fmtM(latest.flow)} of Bitcoin${btcStr} 🟢\n\nLarry keeps stacking. 📈\n\nData: Farside Investors\n\n#Bitcoin #IBIT #Crypto`
     : `🚨 BREAKING: BlackRock's Bitcoin ETF just SOLD ${fmtM(latest.flow)} of Bitcoin${btcStr} 🔴\n\nOutflows hitting. 📉\n\nData: Farside Investors\n\n#Bitcoin #IBIT #Crypto`;
 
-  const chartUrl = buildChartUrl(rows.slice(-7));
-  const chartRes = await fetch(chartUrl);
+  // ---- chart image (must be a valid PNG or we abort with a useful log) ----
+  const chartRes = await fetch(buildChartUrl(rows.slice(-7)));
   const chartBuffer = Buffer.from(await chartRes.arrayBuffer());
+  const chartMime = detectImageMime(chartBuffer);
+  if (!chartRes.ok || chartMime !== 'image/png') {
+    console.error(
+      `QuickChart problem. HTTP ${chartRes.status}, detected type: ${chartMime}, body snippet:`,
+      chartBuffer.slice(0, 300).toString('utf8')
+    );
+    throw new Error('QuickChart did not return a valid PNG');
+  }
 
   const client = new TwitterApi({
     appKey: process.env.X_API_KEY,
@@ -185,9 +212,21 @@ async function main() {
 
   const mediaIds = [await client.v1.uploadMedia(chartBuffer, { mimeType: 'image/png' })];
 
+  // ---- Fink image: validate real type, never let it block the post ----
   if (fs.existsSync(FINK_IMAGE_PATH)) {
-    const finkBuffer = fs.readFileSync(FINK_IMAGE_PATH);
-    mediaIds.push(await client.v1.uploadMedia(finkBuffer, { mimeType: 'image/jpeg' }));
+    try {
+      const finkBuffer = fs.readFileSync(FINK_IMAGE_PATH);
+      const finkMime = detectImageMime(finkBuffer);
+      if (finkMime) {
+        mediaIds.push(await client.v1.uploadMedia(finkBuffer, { mimeType: finkMime }));
+        console.log(`Fink image attached (${finkMime}).`);
+      } else {
+        console.warn('Fink image is not a recognized image format (first bytes: ' +
+          finkBuffer.slice(0, 4).toString('hex') + '), skipping it.');
+      }
+    } catch (e) {
+      console.warn('Fink image upload failed, posting without it:', e.message);
+    }
   }
 
   const tweet = await client.v2.tweet({ text, media: { media_ids: mediaIds } });
