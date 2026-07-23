@@ -1,21 +1,20 @@
-// fetch-assets.js (v2)
-// Asset sourcing with near-zero FMP usage:
-// - Logos:  FMP logo CDN direct URLs (no API key, no quota)  -> assets/logos/TICKER.png
-// - CEOs:   hardcoded name map -> Wikipedia pageimage        -> assets/ceos/TICKER.jpg
-//           (FMP profile used ONLY for tickers missing from the map,
-//            with a circuit breaker after 3 consecutive 429s)
-// Resumable: skips any file that already exists.
-// Outputs:  assets/manifest.json, assets/misses.txt
+// fetch-assets.js (v3)
+// - Logos:  FMP logo CDN direct URLs (no key, no quota)
+// - CEOs:   hardcoded name map -> BATCHED Wikipedia pageimages (50 titles/call)
+//           -> throttled downloads with Retry-After-aware backoff
+// - No FMP API usage at all.
+// Resumable: skips existing files. Outputs assets/manifest.json + assets/misses.txt
 
 import { mkdir, writeFile, appendFile, access } from 'node:fs/promises';
 import path from 'node:path';
 
 // ============ CONFIG ============
-const FMP_API_KEY = process.env.FMP_API_KEY; // only needed for map-fallback tickers
-const WIKI_DELAY_MS = 250;
 const CEO_IMAGE_WIDTH = 800;
 const ASSETS_DIR = 'assets';
-const FMP_429_BREAKER = 3; // consecutive 429s before giving up on FMP for the run
+const DOWNLOAD_DELAY_MS = 1500;  // between image downloads (be gentle to upload.wikimedia.org)
+const BATCH_DELAY_MS = 2000;     // between batched API calls
+const MAX_RETRIES = 3;
+const UA = 'DegenTraderAssetFetch/3.0 (github.com/ChristopherYip/degentrader)';
 
 const WATCHLIST = [
   'NVDA','TSLA','SPCX','PLTR','AAPL','MSFT','AMZN','GOOGL','META','NFLX',
@@ -33,55 +32,59 @@ const WATCHLIST = [
   'CELH','ELF','LLY','UNH','NVO','MRNA','XOM','DAL','UAL',
 ];
 
-// Ticker -> Wikipedia article title for the CEO.
-// VERIFY the flagged ones — CEO seats churn. Tickers NOT in this map fall back to FMP.
-// SPCX intentionally absent: it's an ETF, no CEO (check whether it belongs on the watchlist).
+// Tickers that CANNOT be auto-fetched safely — ambiguous names or no Wikipedia page.
+// Source headshots manually from the company's leadership/press page.
+const MANUAL_TICKERS = {
+  SPCX: 'ETF — no CEO (verify this ticker belongs on an earnings watchlist)',
+  WEN:  'Bob Wright (CEO since May 2026) — "Bob Wright" on Wikipedia is the NBC exec; use wendys.com press page',
+  SMR:  'John Hopkins — name collides with Johns Hopkins; use nuscalepower.com leadership page',
+  CLSK: 'Matt Schultz — name collides with Iowa politician; use cleanspark.com management page',
+  MRVL: 'Matt Murphy — no unambiguous Wikipedia article; use marvell.com leadership page',
+};
+
+// Ticker -> exact Wikipedia article title for the CEO.
 const CEO_NAMES = {
   NVDA: 'Jensen Huang', TSLA: 'Elon Musk', PLTR: 'Alex Karp', AAPL: 'Tim Cook',
   MSFT: 'Satya Nadella', AMZN: 'Andy Jassy', GOOGL: 'Sundar Pichai',
-  META: 'Mark Zuckerberg', NFLX: 'Ted Sarandos', // co-CEO w/ Greg Peters
-  AMD: 'Lisa Su', AVGO: 'Hock Tan', MU: 'Sanjay Mehrotra', MRVL: 'Matt Murphy',
+  META: 'Mark Zuckerberg', NFLX: 'Ted Sarandos',
+  AMD: 'Lisa Su', AVGO: 'Hock Tan', MU: 'Sanjay Mehrotra',
   NOW: 'Bill McDermott', ORCL: 'Clay Magouyrk', // co-CEO w/ Mike Sicilia — VERIFY
   CRM: 'Marc Benioff', SMCI: 'Charles Liang', ARM: 'Rene Haas', TSM: 'C. C. Wei',
   ASML: 'Christophe Fouquet', COIN: 'Brian Armstrong', HOOD: 'Vlad Tenev',
-  MSTR: 'Michael Saylor', // CEO; Michael Saylor is exec chairman — swap if you want the face
-  RDDT: 'Steve Huffman', ASTS: 'Abel Avellan', RKLB: 'Peter Beck',
-  NBIS: 'Arkady Volozh', CRWV: 'Michael Intrator', APP: 'Adam Foroughi',
-  GME: 'Ryan Cohen', AMC: 'Adam Aron', SOFI: 'Anthony Noto',
-  IONQ: 'Niccolo de Masi', RGTI: 'Subodh Kulkarni', QBTS: 'Alan Baratz',
-  OKLO: 'Jacob DeWitte', HIMS: 'Andrew Dudum', TEM: 'Eric Lefkofsky',
-  CRCL: 'Jeremy Allaire', FIG: 'Dylan Field', CVNA: 'Ernie Garcia III',
-  AFRM: 'Max Levchin', UPST: 'Dave Girouard', MARA: 'Fred Thiel',
-  RIOT: 'Jason Les', SOUN: 'Keyvan Mohajer',
+  MSTR: 'Phong Le', RDDT: 'Steve Huffman', ASTS: 'Abel Avellan',
+  RKLB: 'Peter Beck', NBIS: 'Arkady Volozh', CRWV: 'Michael Intrator',
+  APP: 'Adam Foroughi', GME: 'Ryan Cohen', AMC: 'Adam Aron',
+  SOFI: 'Anthony Noto', IONQ: 'Niccolo de Masi', RGTI: 'Subodh Kulkarni',
+  QBTS: 'Alan Baratz', OKLO: 'Jacob DeWitte', HIMS: 'Andrew Dudum',
+  TEM: 'Eric Lefkofsky', CRCL: 'Jeremy Allaire', FIG: 'Dylan Field',
+  CVNA: 'Ernie Garcia III', AFRM: 'Max Levchin', UPST: 'Dave Girouard',
+  MARA: 'Fred Thiel', RIOT: 'Jason Les', SOUN: 'Keyvan Mohajer',
   BBAI: 'Kevin McAleenan', ACHR: 'Adam Goldstein', JOBY: 'JoeBen Bevirt',
   LUNR: 'Steve Altemus', POET: 'Suresh Venkatesan', PATH: 'Daniel Dines',
   DKNG: 'Jason Robins', RBLX: 'David Baszucki', U: 'Matthew Bromberg',
   SNAP: 'Evan Spiegel', PINS: 'Bill Ready',
-  SPOT: 'Gustav Söderström', // co-CEO w/ Alex Norstr\u00f6m; Ek is chairman — VERIFY
+  SPOT: 'Gustav S\u00f6derstr\u00f6m', // co-CEO w/ Alex Norstr\u00f6m — VERIFY
   ROKU: 'Anthony Wood', VRT: 'Giordano Albertazzi', ANET: 'Jayshree Ullal',
   DELL: 'Michael Dell', SNOW: 'Sridhar Ramaswamy', CRWD: 'George Kurtz',
   PANW: 'Nikesh Arora', NET: 'Matthew Prince', DDOG: 'Olivier Pomel',
   MDB: 'Dev Ittycheria', LRCX: 'Tim Archer', AMAT: 'Gary Dickerson',
   KLAC: 'Rick Wallace', INTC: 'Lip-Bu Tan', QCOM: 'Cristiano Amon',
   TXN: 'Haviv Ilan', IBM: 'Arvind Krishna', ADBE: 'Shantanu Narayen',
-  SHOP: 'Tobias Lutke', UBER: 'Dara Khosrowshahi', LYFT: 'David Risher',
+  SHOP: 'Tobias L\u00fctke', UBER: 'Dara Khosrowshahi', LYFT: 'David Risher',
   ABNB: 'Brian Chesky', DASH: 'Tony Xu', ZM: 'Eric Yuan', PYPL: 'Alex Chriss',
   XYZ: 'Jack Dorsey', TTD: 'Jeff Green', DUOL: 'Luis von Ahn',
-  AXON: 'Rick Smith (Axon)', RIVN: 'RJ Scaringe', NIO: 'Li Bin',
-  F: 'Jim Farley', GM: 'Mary Barra', BA: 'Kelly Ortberg', GE: 'Larry Culp',
-  GEV: 'Scott Strazik', CAT: 'Joe Creed', VST: 'Jim Burke',
+  AXON: 'Rick Smith (Axon)', RIVN: 'RJ Scaringe', LCID: 'Silvio Napoli',
+  NIO: 'Li Bin', F: 'Jim Farley', GM: 'Mary Barra', BA: 'Kelly Ortberg',
+  GE: 'Larry Culp', GEV: 'Scott Strazik', CAT: 'Joe Creed', VST: 'Jim Burke',
   CEG: 'Joe Dominguez', JPM: 'Jamie Dimon', GS: 'David Solomon',
   MS: 'Ted Pick', BAC: 'Brian Moynihan', V: 'Ryan McInerney',
   MA: 'Michael Miebach', BABA: 'Eddie Wu', JD: 'Xu Ran', PDD: 'Chen Lei',
-  DIS: 'Bob Iger', WMT: 'John Furner', // took over Feb 2026 — VERIFY
-  COST: 'Ron Vachris', TGT: 'Michael Fiddelke', // took over Feb 2026 — VERIFY
-  HD: 'Ted Decker', SBUX: 'Brian Niccol', CMG: 'Scott Boatwright',
-  NKE: 'Elliott Hill', LULU: 'Calvin McDonald', CELH: 'John Fieldly',
-  ELF: 'Tarang Amin', LLY: 'David A. Ricks', UNH: 'Stephen Hemsley',
-  NVO: 'Mike Doustdar', MRNA: 'Stephane Bancel', XOM: 'Darren Woods',
-  DAL: 'Ed Bastian', UAL: 'Scott Kirby',
-  // Intentionally omitted (recent turnover / uncertain — will fall back to FMP):
-  // WEN, SMR, CLSK, LCID
+  DIS: 'Bob Iger', WMT: 'John Furner', COST: 'Ron Vachris',
+  TGT: 'Michael Fiddelke', HD: 'Ted Decker', SBUX: 'Brian Niccol',
+  CMG: 'Scott Boatwright', NKE: 'Elliott Hill', LULU: 'Calvin McDonald',
+  CELH: 'John Fieldly', ELF: 'Tarang Amin', LLY: 'David A. Ricks',
+  UNH: 'Stephen Hemsley', NVO: 'Mike Doustdar', MRNA: 'St\u00e9phane Bancel',
+  XOM: 'Darren Woods', DAL: 'Ed Bastian', UAL: 'Scott Kirby',
 };
 // ================================
 
@@ -96,8 +99,31 @@ function sniffExt(buf) {
   return null;
 }
 
+// fetch with retry/backoff; honors Retry-After on 429/503.
+async function fetchWithRetry(url, opts = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, { ...opts, headers: { 'user-agent': UA, ...(opts.headers || {}) } });
+      if (res.status === 429 || res.status === 503) {
+        const ra = parseInt(res.headers.get('retry-after') || '0', 10);
+        const wait = ra > 0 ? ra * 1000 : Math.min(5000 * 3 ** attempt, 60000);
+        console.warn(`  ${res.status} from ${new URL(url).host} — waiting ${Math.round(wait / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES + 1})`);
+        await sleep(wait);
+        lastErr = new Error(`HTTP ${res.status}`);
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastErr = err;
+      await sleep(3000 * (attempt + 1));
+    }
+  }
+  throw lastErr;
+}
+
 async function downloadImage(url, destBase) {
-  const res = await fetch(url, { headers: { 'user-agent': 'DegenTraderAssetFetch/2.0' } });
+  const res = await fetchWithRetry(url);
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
   const buf = Buffer.from(await res.arrayBuffer());
   const ext = sniffExt(buf);
@@ -107,7 +133,6 @@ async function downloadImage(url, destBase) {
   return dest;
 }
 
-// Logo via FMP's public image CDN — no API key, no quota. Two URL patterns.
 async function downloadLogo(symbol, destBase) {
   const candidates = [
     `https://images.financialmodelingprep.com/symbol/${symbol}.png`,
@@ -121,67 +146,37 @@ async function downloadLogo(symbol, destBase) {
   throw lastErr;
 }
 
-function cleanCeoName(raw) {
-  if (!raw) return null;
-  let name = raw.split(',')[0];
-  name = name.replace(/\b(Mr|Mrs|Ms|Dr|Prof)\.?\s+/gi, '');
-  name = name.replace(/\s+(Jr|Sr|II|III|IV)\.?$/i, '');
-  return name.trim() || null;
-}
+// Batch: up to 50 titles per API call -> Map(requestedTitle -> imageUrl|null)
+async function wikiBatchImages(titles) {
+  const result = new Map();
+  for (let i = 0; i < titles.length; i += 50) {
+    const chunk = titles.slice(i, i + 50);
+    const params = new URLSearchParams({
+      action: 'query', format: 'json', redirects: '1', maxlag: '5',
+      prop: 'pageimages', pilimit: 'max', pithumbsize: String(CEO_IMAGE_WIDTH),
+      titles: chunk.join('|'), origin: '*',
+    });
+    const res = await fetchWithRetry(`https://en.wikipedia.org/w/api.php?${params}`);
+    if (!res.ok) throw new Error(`Wikipedia API HTTP ${res.status}`);
+    const json = await res.json();
+    const q = json?.query || {};
 
-let fmpConsecutive429 = 0;
-let fmpDisabled = false;
+    // requested title -> final title, via normalized + redirects chains
+    const normalized = new Map((q.normalized || []).map((n) => [n.from, n.to]));
+    const redirects = new Map((q.redirects || []).map((r) => [r.from, r.to]));
+    const pagesByTitle = new Map(Object.values(q.pages || {}).map((p) => [p.title, p]));
 
-async function fmpCeoName(symbol) {
-  if (fmpDisabled || !FMP_API_KEY) return null;
-  const url = `https://financialmodelingprep.com/stable/profile?symbol=${symbol}&apikey=${FMP_API_KEY}`;
-  const res = await fetch(url);
-  if (res.status === 429) {
-    fmpConsecutive429++;
-    if (fmpConsecutive429 >= FMP_429_BREAKER) {
-      fmpDisabled = true;
-      console.warn('FMP circuit breaker tripped — skipping FMP for the rest of this run.');
+    for (const requested of chunk) {
+      let t = normalized.get(requested) || requested;
+      const seen = new Set();
+      while (redirects.has(t) && !seen.has(t)) { seen.add(t); t = redirects.get(t); }
+      const page = pagesByTitle.get(t);
+      const missing = !page || page.missing !== undefined;
+      result.set(requested, missing ? null : (page.thumbnail?.source || null));
     }
-    throw new Error('HTTP 429');
+    if (i + 50 < titles.length) await sleep(BATCH_DELAY_MS);
   }
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  fmpConsecutive429 = 0;
-  const json = await res.json();
-  const row = Array.isArray(json) ? json[0] : json;
-  return cleanCeoName(row?.ceo);
-}
-
-async function wikiPageImage(title) {
-  const params = new URLSearchParams({
-    action: 'query', format: 'json', redirects: '1',
-    prop: 'pageimages', pithumbsize: String(CEO_IMAGE_WIDTH),
-    titles: title, origin: '*',
-  });
-  const res = await fetch(`https://en.wikipedia.org/w/api.php?${params}`, {
-    headers: { 'user-agent': 'DegenTraderAssetFetch/2.0' },
-  });
-  if (!res.ok) throw new Error(`Wikipedia API HTTP ${res.status}`);
-  const json = await res.json();
-  const page = Object.values(json?.query?.pages || {})[0];
-  if (!page || page.missing !== undefined) return null;
-  return page.thumbnail?.source || null;
-}
-
-async function wikiSearchImage(name) {
-  const params = new URLSearchParams({
-    action: 'query', format: 'json', list: 'search',
-    srsearch: `${name} chief executive`, srlimit: '1', origin: '*',
-  });
-  const res = await fetch(`https://en.wikipedia.org/w/api.php?${params}`, {
-    headers: { 'user-agent': 'DegenTraderAssetFetch/2.0' },
-  });
-  if (!res.ok) return null;
-  const json = await res.json();
-  const hit = json?.query?.search?.[0]?.title;
-  if (!hit) return null;
-  await sleep(WIKI_DELAY_MS);
-  const img = await wikiPageImage(hit);
-  return img ? { img, matchedTitle: hit } : null;
+  return result;
 }
 
 async function main() {
@@ -193,84 +188,68 @@ async function main() {
   const missLog = path.join(ASSETS_DIR, 'misses.txt');
   const manifest = {};
 
+  // ---- Phase 1: logos (no quota, no throttling issues) ----
   for (const symbol of WATCHLIST) {
     const logoBase = path.join(logosDir, symbol);
-    const ceoBase = path.join(ceosDir, symbol);
-    const haveLogo = (await exists(`${logoBase}.png`)) || (await exists(`${logoBase}.jpg`));
-    const haveCeo = (await exists(`${ceoBase}.jpg`)) || (await exists(`${ceoBase}.png`));
-
-    // ---- Logo (no API quota) ----
-    if (haveLogo) {
-      console.log(`[${symbol}] logo exists, skipping`);
-    } else {
-      try {
-        const dest = await downloadLogo(symbol, logoBase);
-        console.log(`[${symbol}] logo -> ${dest}`);
-      } catch (err) {
-        console.error(`[${symbol}] logo failed: ${err.message}`);
-        await appendFile(missLog, `${symbol}\tLOGO\t${err.message}\n`);
-      }
+    if ((await exists(`${logoBase}.png`)) || (await exists(`${logoBase}.jpg`))) continue;
+    try {
+      const dest = await downloadLogo(symbol, logoBase);
+      console.log(`[${symbol}] logo -> ${dest}`);
+    } catch (err) {
+      console.error(`[${symbol}] logo failed: ${err.message}`);
+      await appendFile(missLog, `${symbol}\tLOGO\t${err.message}\n`);
     }
+    await sleep(400);
+  }
 
-    // ---- CEO photo ----
-    if (haveCeo) {
-      console.log(`[${symbol}] CEO photo exists, skipping`);
+  // ---- Phase 2: figure out which CEO photos are still needed ----
+  const needed = []; // { symbol, title }
+  for (const symbol of WATCHLIST) {
+    const ceoBase = path.join(ceosDir, symbol);
+    if ((await exists(`${ceoBase}.jpg`)) || (await exists(`${ceoBase}.png`))) continue;
+    if (MANUAL_TICKERS[symbol]) {
+      await appendFile(missLog, `${symbol}\tCEO\tMANUAL: ${MANUAL_TICKERS[symbol]}\n`);
       continue;
     }
-
-    let ceoName = CEO_NAMES[symbol] || null;
-    if (!ceoName) {
-      try {
-        ceoName = await fmpCeoName(symbol);
-        await sleep(350);
-      } catch (err) {
-        await appendFile(missLog, `${symbol}\tCEO\tFMP fallback failed: ${err.message}\n`);
-        continue;
-      }
-      if (!ceoName) {
-        await appendFile(missLog, `${symbol}\tCEO\tnot in CEO_NAMES map and no FMP name\n`);
-        continue;
-      }
+    const title = CEO_NAMES[symbol];
+    if (!title) {
+      await appendFile(missLog, `${symbol}\tCEO\tnot in CEO_NAMES map\n`);
+      continue;
     }
+    needed.push({ symbol, title });
+  }
+  console.log(`\nCEO photos needed: ${needed.length} (${Math.ceil(needed.length / 50)} batched API calls)`);
 
+  // ---- Phase 3: batch-resolve titles -> image URLs ----
+  const urlByTitle = needed.length
+    ? await wikiBatchImages(needed.map((n) => n.title))
+    : new Map();
+
+  // ---- Phase 4: throttled downloads ----
+  for (const { symbol, title } of needed) {
+    const imgUrl = urlByTitle.get(title);
+    if (!imgUrl) {
+      console.warn(`[${symbol}] no Wikipedia image for "${title}"`);
+      await appendFile(missLog, `${symbol}\tCEO\tno Wikipedia image for "${title}"\n`);
+      continue;
+    }
     try {
-      let imgUrl = await wikiPageImage(ceoName);
-      let matchedTitle = ceoName;
-      await sleep(WIKI_DELAY_MS);
-      if (!imgUrl) {
-        const noInitials = ceoName.replace(/\s+[A-Z]\.(?=\s)/g, '').trim();
-        if (noInitials !== ceoName) {
-          imgUrl = await wikiPageImage(noInitials);
-          if (imgUrl) matchedTitle = noInitials;
-          await sleep(WIKI_DELAY_MS);
-        }
-      }
-      if (!imgUrl) {
-        const fallback = await wikiSearchImage(ceoName);
-        if (fallback) ({ img: imgUrl, matchedTitle } = fallback);
-      }
-      if (!imgUrl) {
-        console.warn(`[${symbol}] no Wikipedia image for "${ceoName}"`);
-        await appendFile(missLog, `${symbol}\tCEO\tno Wikipedia image for "${ceoName}"\n`);
-        continue;
-      }
-      const dest = await downloadImage(imgUrl, ceoBase);
-      console.log(`[${symbol}] CEO (${ceoName}) -> ${dest}`);
+      const dest = await downloadImage(imgUrl, path.join(ceosDir, symbol));
+      console.log(`[${symbol}] CEO (${title}) -> ${dest}`);
       manifest[symbol] = {
-        ceo: ceoName,
-        wikipediaTitle: matchedTitle,
+        ceo: title,
         ceoImageSource: imgUrl,
         license: 'Wikimedia Commons — verify per-file license before commercial reuse',
       };
-      await sleep(WIKI_DELAY_MS);
     } catch (err) {
-      console.error(`[${symbol}] CEO image failed: ${err.message}`);
+      console.error(`[${symbol}] CEO download failed: ${err.message}`);
       await appendFile(missLog, `${symbol}\tCEO\t${err.message}\n`);
     }
+    await sleep(DOWNLOAD_DELAY_MS);
   }
 
   await writeFile(path.join(ASSETS_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2));
-  console.log('\nDone. Check assets/misses.txt for gaps.');
+  console.log('\nDone. Check assets/misses.txt for gaps (MANUAL entries need hand-sourcing).');
 }
 
 main().catch((err) => {
