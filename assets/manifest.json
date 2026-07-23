@@ -1,26 +1,262 @@
 {
-  "NOW": {
-    "ceo": "Bill McDermott",
-    "wikipediaTitle": "Bill McDermott",
-    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/SAP_ExecutiveBoard_McDermott_002.jpg/960px-SAP_ExecutiveBoard_McDermott_002.jpg",
+  "ARM": {
+    "ceo": "Rene Haas",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/0/08/Rene_Haas_at_SXSW_2025.jpg",
     "license": "Wikimedia Commons — verify per-file license before commercial reuse"
   },
-  "ORCL": {
-    "ceo": "Clay Magouyrk",
-    "wikipediaTitle": "Safra Catz",
-    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/1/1a/Safra_Catz_Oracle_CloudWorld_2024.jpg",
+  "HOOD": {
+    "ceo": "Vlad Tenev",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ef/Portrait_of_Vlad_Tenev.jpg/960px-Portrait_of_Vlad_Tenev.jpg",
     "license": "Wikimedia Commons — verify per-file license before commercial reuse"
   },
-  "CRM": {
-    "ceo": "Marc Benioff",
-    "wikipediaTitle": "Marc Benioff",
-    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Marc_Benioff.jpg/960px-Marc_Benioff.jpg",
+  "RDDT": {
+    "ceo": "Steve Huffman",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Web_Summit_2017_-_Centre_Stage_Day_2_CG1_7885_%2838232183112%29_%28cropped%29.jpg/960px-Web_Summit_2017_-_Centre_Stage_Day_2_CG1_7885_%2838232183112%29_%28cropped%29.jpg",
     "license": "Wikimedia Commons — verify per-file license before commercial reuse"
   },
-  "SMCI": {
-    "ceo": "Charles Liang",
-    "wikipediaTitle": "Charles Liang",
-    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/4/40/Charles_Liang_2025.jpg",
+  "RKLB": {
+    "ceo": "Peter Beck",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/e/ea/Peter_Beck_KNZM_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "GME": {
+    "ceo": "Ryan Cohen",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/16/Ryan_Cohen_2026.jpg/960px-Ryan_Cohen_2026.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "AMC": {
+    "ceo": "Adam Aron",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/Adam_Aron_momi-2.jpg/960px-Adam_Aron_momi-2.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "SOFI": {
+    "ceo": "Anthony Noto",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Anthony-Noto-Headshot.jpg/960px-Anthony-Noto-Headshot.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "TEM": {
+    "ceo": "Eric Lefkofsky",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/en/4/4d/Eric_Lefkofsky.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "CRCL": {
+    "ceo": "Jeremy Allaire",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Jeremy_Allaire_at_MoneyConf_2018_%282%29_%28cropped%29.jpg/960px-Jeremy_Allaire_at_MoneyConf_2018_%282%29_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "FIG": {
+    "ceo": "Dylan Field",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/f/fc/Dylan_Field_TechCrunch_Disrupt_2022_1435088567_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "AFRM": {
+    "ceo": "Max Levchin",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c6/Max_Levchin_%282013%29.jpg/960px-Max_Levchin_%282013%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "BBAI": {
+    "ceo": "Kevin McAleenan",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Kevin_McAleenan_official_photo.jpg/960px-Kevin_McAleenan_official_photo.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "JOBY": {
+    "ceo": "JoeBen Bevirt",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/JoeBen_Bevirt_-_CEO_and_Founder_-_Joby_Aviation.jpg/960px-JoeBen_Bevirt_-_CEO_and_Founder_-_Joby_Aviation.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "PATH": {
+    "ceo": "Daniel Dines",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/2021_-_Centre_Stage_EN6_5562_%2851652161468%29_%28cropped%29.jpg/960px-2021_-_Centre_Stage_EN6_5562_%2851652161468%29_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "RBLX": {
+    "ceo": "David Baszucki",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/3/35/David_Baszucki_in_2021.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "SNAP": {
+    "ceo": "Evan Spiegel",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/c/ce/Evan_Spiegel%2C_founder_of_Snapchat.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "ANET": {
+    "ceo": "Jayshree Ullal",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/Jayshree_Ullal_Arista_CEO.jpg/960px-Jayshree_Ullal_Arista_CEO.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "DELL": {
+    "ceo": "Michael Dell",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/d/d0/Michael_Dell_%2852548152888%29_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "SNOW": {
+    "ceo": "Sridhar Ramaswamy",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/2020588_Sridhar_Ramaswamy_38.jpg/960px-2020588_Sridhar_Ramaswamy_38.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "CRWD": {
+    "ceo": "George Kurtz",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/George-kurtz-speaking.png/960px-George-kurtz-speaking.png",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "PANW": {
+    "ceo": "Nikesh Arora",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Nikesh_Arora_TechCrunch_Disrupt_2015.jpg/960px-Nikesh_Arora_TechCrunch_Disrupt_2015.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "NET": {
+    "ceo": "Matthew Prince",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ee/577181505RR106_TechCrunch_D_%28cropped%29.jpg/960px-577181505RR106_TechCrunch_D_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "INTC": {
+    "ceo": "Lip-Bu Tan",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/1/10/Howard_Lutnick_with_Intel_CEO_Lip-Bu_Tan_%282025%29_%28cropped3%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "QCOM": {
+    "ceo": "Cristiano Amon",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Cristiano_Amon_%28President_%26_CEOQualcomm%29_%2854916855494%29_%28cropped%29.jpg/960px-Cristiano_Amon_%28President_%26_CEOQualcomm%29_%2854916855494%29_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "IBM": {
+    "ceo": "Arvind Krishna",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/3/30/Arvind_Krishna_in_2025_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "ADBE": {
+    "ceo": "Shantanu Narayen",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/01/Shantanu_Narayen_-_the_CEO_of_Adobe_Inc.jpg/960px-Shantanu_Narayen_-_the_CEO_of_Adobe_Inc.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "SHOP": {
+    "ceo": "Tobias Lütke",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/NYC-Commerce-Tobi-L%C3%BCtki-561.jpg/960px-NYC-Commerce-Tobi-L%C3%BCtki-561.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "UBER": {
+    "ceo": "Dara Khosrowshahi",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/1/15/CEO_of_Uber_Technologies_Dara_Khosrowshahi_in_New_York_-_2019_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "LYFT": {
+    "ceo": "David Risher",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/David_Risher_%282012%29.jpg/960px-David_Risher_%282012%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "ABNB": {
+    "ceo": "Brian Chesky",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Brian_Chesky_2025.jpg/960px-Brian_Chesky_2025.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "DASH": {
+    "ceo": "Tony Xu",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/TechCrunch_Disrupt_San_Francisco_2018_-_day_1_%2843784924924%29_%28cropped%29.jpg/960px-TechCrunch_Disrupt_San_Francisco_2018_-_day_1_%2843784924924%29_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "ZM": {
+    "ceo": "Eric Yuan",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ee/Eric_Yuan_2025_%28cropped%29.jpg/960px-Eric_Yuan_2025_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "XYZ": {
+    "ceo": "Jack Dorsey",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Jack_Dorsey_in_Washington_D.C._-_2018_%2844538272181%29_%28cropped%29.jpg/960px-Jack_Dorsey_in_Washington_D.C._-_2018_%2844538272181%29_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "DUOL": {
+    "ceo": "Luis von Ahn",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Wikimania_2015_-_Day_2_%2818%29_%28cropped%29.jpg/960px-Wikimania_2015_-_Day_2_%2818%29_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "RIVN": {
+    "ceo": "RJ Scaringe",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/26/Rivian_founder_and_CEO_Robert_%22RJ%22_Scaringe_at_the_debut_of_the_Rivian_R1S_SUV_at_the_2018_Los_Angeles_Auto_Show%2C_November_27%2C_2018_%28cropped%29.jpg/960px-Rivian_founder_and_CEO_Robert_%22RJ%22_Scaringe_at_the_debut_of_the_Rivian_R1S_SUV_at_the_2018_Los_Angeles_Auto_Show%2C_November_27%2C_2018_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "GM": {
+    "ceo": "Mary Barra",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Mary_Barra%2C_official_portrait%2C_Homeland_Security_Council.jpg/960px-Mary_Barra%2C_official_portrait%2C_Homeland_Security_Council.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "BA": {
+    "ceo": "Kelly Ortberg",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/d/de/Ortberg-Senate_%28cropped%29.png",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "GE": {
+    "ceo": "Larry Culp",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/9/99/Larry_Culp_in_Beijing%2C_2026.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "GEV": {
+    "ceo": "Scott Strazik",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/58_Charles_Street_-_Cambridge%2C_MA_-_DSC05693.jpg/960px-58_Charles_Street_-_Cambridge%2C_MA_-_DSC05693.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "JPM": {
+    "ceo": "Jamie Dimon",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Chancellor_Rachel_Reeves_meets_Jamie_Dimon_%2854838700663%29_%28cropped%29_%28cropped%29.jpg/960px-Chancellor_Rachel_Reeves_meets_Jamie_Dimon_%2854838700663%29_%28cropped%29_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "BAC": {
+    "ceo": "Brian Moynihan",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fc/Brian_Moynihan%2C_official_portrait%2C_Homeland_Security_Council.jpg/960px-Brian_Moynihan%2C_official_portrait%2C_Homeland_Security_Council.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "V": {
+    "ceo": "Ryan McInerney",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/8/81/Ryan_McInerney_July_18%2C_2025.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "MA": {
+    "ceo": "Michael Miebach",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Michael_Miebach.jpg/960px-Michael_Miebach.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "DIS": {
+    "ceo": "Bob Iger",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/7/7e/Bob_Iger_2019_Disney_Legends_Awards_Ceremony_D23_EXPO_2019_%2851441457900%29_%28cropped%29.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "WMT": {
+    "ceo": "John Furner",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/John_Furner_headshot_2019.jpg/960px-John_Furner_headshot_2019.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "SBUX": {
+    "ceo": "Brian Niccol",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/4/45/Brian_Niccol.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "LLY": {
+    "ceo": "David A. Ricks",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/David_A._Ricks_2025.jpg/960px-David_A._Ricks_2025.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "UNH": {
+    "ceo": "Stephen Hemsley",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/02/Stephen_Hemsley.jpg/960px-Stephen_Hemsley.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "NVO": {
+    "ceo": "Mike Doustdar",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Maziar_Mike_Doustdar.jpg/960px-Maziar_Mike_Doustdar.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "MRNA": {
+    "ceo": "Stéphane Bancel",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/d/d3/Stephane_Bancel.png",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "XOM": {
+    "ceo": "Darren Woods",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/d/d8/Darren_Woods_%28born_c._1965%29_at_WEF_Special_Meeting_on_Global_Collaboration%2C_Growth_and_Energy_for_Development%2C_2024.png",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "DAL": {
+    "ceo": "Ed Bastian",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Ed_Bastian_Delta_CEO.jpg/960px-Ed_Bastian_Delta_CEO.jpg",
     "license": "Wikimedia Commons — verify per-file license before commercial reuse"
   }
 }
