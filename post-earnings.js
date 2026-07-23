@@ -1,18 +1,23 @@
-// post-earnings.js — Earnings reaction posts for @DegenTrader (Finnhub edition)
+// post-earnings.js — Long-form earnings reaction posts for @DegenTrader
+// Requires X Premium (posts exceed 280 chars) + images attached.
 // Runs every 15 min via Railway cron. Three ET windows:
 //   4:00–4:59 PM ET → snapshot closing prices for today's after-close (amc) reporters
 //   6:00–6:59 PM ET → post amc earnings with true after-hours movement
 //   8:00–8:59 AM ET → post pre-open (bmo) earnings with premarket movement + catch leftovers
-// Dedupe via Postgres so nothing posts twice.
+// Data: Finnhub (calendar, quotes, profile, metrics, news), FMP (chart history, CEO name),
+//       QuickChart (chart image), Wikipedia (CEO photo). Dedupe via Postgres.
 
 import { TwitterApi } from 'twitter-api-v2';
 import pg from 'pg';
 const { Client } = pg;
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
+const FMP_KEY = process.env.FMP_API_KEY;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 
 const MAX_POSTS_PER_RUN = 3;
+const CHART_LOOKBACK_DAYS = 120; // calendar days back for the 3-month chart
+const MAX_IMAGE_BYTES = 4.8 * 1024 * 1024; // stay under X's 5MB photo limit
 
 // Watchlist — only post earnings for names people actually care about.
 // Ordered roughly by hype/priority; earlier = posted first when multiple report.
@@ -58,7 +63,7 @@ function easternDateOffset(days) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(d);
 }
 
-// ---------- Finnhub helpers ----------
+// ---------- API helpers ----------
 
 async function finnhub(path, params = {}) {
   const qs = new URLSearchParams({ ...params, token: FINNHUB_KEY }).toString();
@@ -70,9 +75,15 @@ async function finnhub(path, params = {}) {
   return res.json();
 }
 
-// Earnings calendar. Returns entries with:
-// symbol, date, hour ('bmo'|'amc'|'dmh'|''), quarter, year,
-// epsActual, epsEstimate, revenueActual, revenueEstimate
+async function fetchJson(url) {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
 async function getEarningsCalendar(fromDate, toDate) {
   const data = await finnhub('calendar/earnings', { from: fromDate, to: toDate });
   return data?.earningsCalendar || [];
@@ -83,30 +94,213 @@ async function getQuote(symbol) {
   return finnhub('quote', { symbol });
 }
 
+// Extra metrics for the post body + logo URL. Everything here is optional.
+async function getExtras(symbol) {
+  const out = {};
+  try {
+    const p = await finnhub('stock/profile2', { symbol });
+    if (p) {
+      out.name = p.name || null;
+      out.logoUrl = p.logo || null;
+      out.marketCapM = p.marketCapitalization || null; // in millions USD
+    }
+  } catch (err) {
+    console.log(`profile2 failed for ${symbol}: ${err.message}`);
+  }
+  try {
+    const m = await finnhub('stock/metric', { symbol, metric: 'all' });
+    const met = m?.metric || {};
+    out.wkHigh = met['52WeekHigh'] ?? null;
+    out.wkLow = met['52WeekLow'] ?? null;
+    out.revGrowthYoy = met.revenueGrowthTTMYoy ?? null; // percent
+  } catch (err) {
+    console.log(`metric failed for ${symbol}: ${err.message}`);
+  }
+  return out;
+}
+
+// Recent news headlines for a symbol (last ~24h). On earnings night this is
+// coverage of the release itself — guidance, segment numbers, key quotes.
+async function getCompanyNews(symbol) {
+  try {
+    const news = await finnhub('company-news', {
+      symbol,
+      from: easternDateOffset(-1),
+      to: easternDateOffset(0),
+    });
+    return (news || [])
+      .sort((a, b) => (b.datetime || 0) - (a.datetime || 0))
+      .slice(0, 6)
+      .map(n => `- ${n.headline}${n.summary ? `: ${String(n.summary).slice(0, 200)}` : ''}`);
+  } catch (err) {
+    console.log(`News fetch failed for ${symbol}: ${err.message}`);
+    return [];
+  }
+}
+
+// ---------- images ----------
+
+// Magic-byte image type detection — X rejects mislabeled uploads.
+function detectImageType(buf) {
+  if (!buf || buf.length < 12) return null;
+  if (buf[0] === 0x89 && buf[1] === 0x50) return 'image/png';
+  if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
+  if (buf[0] === 0x47 && buf[1] === 0x49) return 'image/gif';
+  if (buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return 'image/webp';
+  return null;
+}
+
+async function downloadImage(url) {
+  const res = await fetch(url, { headers: { 'User-Agent': 'DegenTraderBot/1.0' } });
+  if (!res.ok) throw new Error(`image HTTP ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > MAX_IMAGE_BYTES) throw new Error('image too large');
+  const mimeType = detectImageType(buf);
+  if (!mimeType) throw new Error('unrecognized image type');
+  return { buffer: buf, mimeType };
+}
+
+// 3-month price chart in DegenTrader style, rendered by QuickChart.
+// Price history from FMP (Finnhub candles are paid).
+async function renderChartImage(symbol) {
+  const from = easternDateOffset(-CHART_LOOKBACK_DAYS);
+  const to = easternDateOffset(0);
+  const hist = await fetchJson(
+    `https://financialmodelingprep.com/stable/historical-price-eod/light?symbol=${symbol}&from=${from}&to=${to}&apikey=${FMP_KEY}`
+  );
+  const rows = (Array.isArray(hist) ? hist : [])
+    .filter(r => r.date && r.price != null)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (rows.length < 10) throw new Error('not enough price history');
+
+  const labels = rows.map(r => r.date.slice(5)); // MM-DD
+  const closes = rows.map(r => Number(r.price));
+  const up = closes[closes.length - 1] >= closes[0];
+  const lineColor = up ? '#22c55e' : '#ef4444';
+
+  const config = {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: closes,
+        borderColor: lineColor,
+        backgroundColor: up ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+        fill: true,
+        pointRadius: 0,
+        borderWidth: 2,
+        tension: 0.15,
+      }],
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: true,
+          text: `$${symbol} — last 3 months`,
+          color: '#FFD700',
+          font: { size: 20, family: 'monospace', weight: 'bold' },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#8b93a7', maxTicksLimit: 6, font: { family: 'monospace' } },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+        y: {
+          ticks: { color: '#8b93a7', font: { family: 'monospace' } },
+          grid: { color: 'rgba(255,255,255,0.08)' },
+        },
+      },
+    },
+  };
+
+  const res = await fetch('https://quickchart.io/chart', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      chart: config,
+      width: 800,
+      height: 450,
+      backgroundColor: '#0b1220',
+      version: '3',
+      format: 'png',
+    }),
+  });
+  if (!res.ok) throw new Error(`QuickChart ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const mimeType = detectImageType(buf);
+  if (!mimeType) throw new Error('QuickChart returned non-image');
+  return { buffer: buf, mimeType };
+}
+
+// CEO portrait: get the CEO's name from FMP's company profile, then pull
+// their Wikipedia portrait if one exists. Skips silently if not found.
+async function getCeoImage(symbol) {
+  const profile = await fetchJson(
+    `https://financialmodelingprep.com/stable/profile?symbol=${symbol}&apikey=${FMP_KEY}`
+  );
+  const ceo = Array.isArray(profile) ? profile[0]?.ceo : profile?.ceo;
+  if (!ceo || ceo.length < 4) throw new Error('no CEO name in profile');
+
+  // Strip honorifics/suffixes that break Wikipedia lookups ("Mr. Timothy D. Cook")
+  const cleaned = ceo
+    .replace(/^(Mr\.|Ms\.|Mrs\.|Dr\.)\s+/i, '')
+    .replace(/\s+(Jr\.|Sr\.|II|III|IV)\.?$/i, '')
+    .trim();
+
+  const wiki = await fetchJson(
+    `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleaned)}`
+  );
+  if (wiki.type !== 'standard') throw new Error('no standard Wikipedia page');
+  const imgUrl = wiki.originalimage?.source || wiki.thumbnail?.source;
+  if (!imgUrl) throw new Error('no portrait on Wikipedia page');
+  return downloadImage(imgUrl);
+}
+
+// Gather up to 3 images: chart, logo, CEO. Every step is non-fatal.
+async function gatherImages(symbol, logoUrl) {
+  const images = [];
+  try {
+    images.push(await renderChartImage(symbol));
+    console.log(`${symbol}: chart image ready`);
+  } catch (err) {
+    console.log(`${symbol}: chart image skipped (${err.message})`);
+  }
+  if (logoUrl) {
+    try {
+      images.push(await downloadImage(logoUrl));
+      console.log(`${symbol}: logo image ready`);
+    } catch (err) {
+      console.log(`${symbol}: logo skipped (${err.message})`);
+    }
+  }
+  try {
+    images.push(await getCeoImage(symbol));
+    console.log(`${symbol}: CEO image ready`);
+  } catch (err) {
+    console.log(`${symbol}: CEO image skipped (${err.message})`);
+  }
+  return images;
+}
+
 // ---------- movement logic ----------
 
-// After-hours move using our own 4PM close snapshot.
-// Returns { pct, label } or null if we can't compute an honest number.
 function afterHoursMove(quote, snapshotClose, todayET) {
   if (!quote || !quote.c || !quote.t) return null;
   const trade = etPartsFromDate(new Date(quote.t * 1000));
   const tradeMinutes = trade.hour * 60 + trade.minute;
 
-  // Snapshot path: last trade is today, after ~4:05 PM ET → feed has extended-hours trades
   if (snapshotClose > 0 && trade.dateStr === todayET && tradeMinutes > 16 * 60 + 5) {
     const pct = ((quote.c - snapshotClose) / snapshotClose) * 100;
     return { pct, label: 'after hours' };
   }
-  // Fallback: feed frozen at the close → today's regular-session change
   if (trade.dateStr === todayET && quote.dp != null) {
     return { pct: Number(quote.dp), label: 'on the day' };
   }
   return null;
 }
 
-// Premarket move: dp = current vs yesterday's close. If the last trade is from
-// today (premarket), that IS the earnings reaction. If the feed is stale
-// (last trade yesterday), dp is pre-earnings noise — skip the price line.
 function premarketMove(quote, todayET) {
   if (!quote || !quote.t || quote.dp == null) return null;
   const trade = etPartsFromDate(new Date(quote.t * 1000));
@@ -126,6 +320,27 @@ function formatRevenue(n) {
   return `$${Number(n).toLocaleString('en-US')}`;
 }
 
+function formatMarketCap(millions) {
+  if (millions == null || isNaN(millions) || millions <= 0) return null;
+  if (millions >= 1e6) return `$${(millions / 1e6).toFixed(2)}T`;
+  if (millions >= 1e3) return `$${(millions / 1e3).toFixed(0)}B`;
+  return `$${millions.toFixed(0)}M`;
+}
+
+function formatPrice(n) {
+  if (n == null || isNaN(n)) return null;
+  return n >= 1000
+    ? `$${Math.round(n).toLocaleString('en-US')}`
+    : `$${Number(n).toFixed(2)}`;
+}
+
+function surprisePct(actual, estimate) {
+  if (actual == null || estimate == null || estimate === 0) return '';
+  const pct = ((actual - estimate) / Math.abs(estimate)) * 100;
+  const sign = pct >= 0 ? '+' : '';
+  return ` (${sign}${pct.toFixed(1)}%)`;
+}
+
 function beatMissEmoji(actual, estimate) {
   if (actual == null || estimate == null) return '';
   if (actual > estimate) return ' ✅ BEAT';
@@ -133,16 +348,17 @@ function beatMissEmoji(actual, estimate) {
   return ' ➖ INLINE';
 }
 
-function buildMainTweet(e, move) {
+function buildMainTweet(e, move, extras, commentary) {
+  const yr = e.year ? ` ${e.year}` : '';
   const header = e.quarter
-    ? `🚨 $${e.symbol} Q${e.quarter} EARNINGS`
+    ? `🚨 $${e.symbol} Q${e.quarter}${yr} EARNINGS`
     : `🚨 $${e.symbol} EARNINGS OUT`;
   const lines = [header, ''];
 
   if (e.epsActual != null) {
     let epsLine = `📊 EPS: $${Number(e.epsActual).toFixed(2)}`;
     if (e.epsEstimate != null) {
-      epsLine += ` vs $${Number(e.epsEstimate).toFixed(2)} est${beatMissEmoji(e.epsActual, e.epsEstimate)}`;
+      epsLine += ` vs $${Number(e.epsEstimate).toFixed(2)} est${beatMissEmoji(e.epsActual, e.epsEstimate)}${surprisePct(e.epsActual, e.epsEstimate)}`;
     }
     lines.push(epsLine);
   }
@@ -152,10 +368,23 @@ function buildMainTweet(e, move) {
     let revLine = `💰 Rev: ${revActual}`;
     const revEst = formatRevenue(e.revenueEstimate);
     if (revEst) {
-      revLine += ` vs ${revEst} est${beatMissEmoji(e.revenueActual, e.revenueEstimate)}`;
+      revLine += ` vs ${revEst} est${beatMissEmoji(e.revenueActual, e.revenueEstimate)}${surprisePct(e.revenueActual, e.revenueEstimate)}`;
     }
     lines.push(revLine);
   }
+
+  // Extra metrics block
+  const metricLines = [];
+  if (extras.revGrowthYoy != null && !isNaN(extras.revGrowthYoy)) {
+    const sign = extras.revGrowthYoy >= 0 ? '+' : '';
+    metricLines.push(`📈 Rev growth: ${sign}${Number(extras.revGrowthYoy).toFixed(1)}% YoY`);
+  }
+  const mcap = formatMarketCap(extras.marketCapM);
+  if (mcap) metricLines.push(`🏦 Market cap: ${mcap}`);
+  const lo = formatPrice(extras.wkLow);
+  const hi = formatPrice(extras.wkHigh);
+  if (lo && hi) metricLines.push(`📏 52-wk range: ${lo} – ${hi}`);
+  if (metricLines.length > 0) lines.push('', ...metricLines);
 
   if (move) {
     const arrow = move.pct >= 0 ? '🚀' : '📉';
@@ -163,17 +392,23 @@ function buildMainTweet(e, move) {
     lines.push('', `${arrow} ${sign}${move.pct.toFixed(1)}% ${move.label}`);
   }
 
+  if (commentary) lines.push('', commentary);
+
   lines.push('', '#Earnings #Stocks');
   return lines.join('\n');
 }
 
-async function generateTake(e, move) {
+async function generateCommentary(e, move) {
   const fallback = move && move.pct < 0
     ? `Numbers in, market not impressed. Overreaction or warning sign? 👇`
     : `Numbers in. Bulls eating good tonight or is this priced in? 👇`;
   if (!ANTHROPIC_KEY) return fallback;
   try {
+    const headlines = await getCompanyNews(e.symbol);
     const moveDesc = move ? `${move.pct >= 0 ? '+' : ''}${move.pct.toFixed(1)}% ${move.label}` : 'no price data yet';
+    const newsBlock = headlines.length > 0
+      ? `\n\nRecent news coverage of the release:\n${headlines.join('\n')}`
+      : '';
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -183,18 +418,20 @@ async function generateTake(e, move) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 150,
+        max_tokens: 350,
         messages: [{
           role: 'user',
-          content: `You write for a high-energy "degen trader" stock market X account. ${e.symbol} just reported Q${e.quarter || '?'} earnings: EPS ${e.epsActual} vs ${e.epsEstimate} est, revenue ${e.revenueActual} vs ${e.revenueEstimate} est. Stock is ${moveDesc}. Write a punchy 1-2 sentence take, then end with a short question to spark replies. Max 200 characters total. No hashtags, no cashtags, no quotes around the output.`,
+          content: `You write for a high-energy "degen trader" stock market X account. ${e.symbol} just reported Q${e.quarter || '?'} earnings: EPS ${e.epsActual} vs ${e.epsEstimate} est, revenue ${e.revenueActual} vs ${e.revenueEstimate} est. Stock is ${moveDesc}.${newsBlock}
+
+Write a punchy 2-4 sentence take on the release. If the news coverage above contains specific details (guidance, subscriber/user numbers, segment results, buybacks, margin commentary), anchor the take on those details — that's usually the real story, not the headline beat/miss. NEVER invent numbers or facts that aren't in the data provided above. If no coverage is available, keep it general. End with a short question to spark replies. Max 450 characters total. No hashtags, no cashtags, no quotes around the output, no emoji at the start.`,
         }],
       }),
     });
     const data = await res.json();
     const text = data?.content?.find(c => c.type === 'text')?.text?.trim();
-    return text && text.length <= 270 ? text : fallback;
+    return text && text.length <= 600 ? text : fallback;
   } catch (err) {
-    console.log(`Claude take failed (${err.message}), using fallback.`);
+    console.log(`Claude commentary failed (${err.message}), using fallback.`);
     return fallback;
   }
 }
@@ -227,7 +464,6 @@ async function runSnapshotWindow(db, todayET) {
   }
 }
 
-// Posting windows (evening = amc with after-hours move; morning = bmo/premarket + leftovers)
 async function runPostingWindow(db, isMorning, todayET) {
   const fromDate = isMorning ? easternDateOffset(-1) : todayET;
   const calendar = await getEarningsCalendar(fromDate, todayET);
@@ -274,25 +510,38 @@ async function runPostingWindow(db, isMorning, todayET) {
       console.log(`Quote failed for ${e.symbol}: ${err.message}`);
     }
 
-    const mainText = buildMainTweet(e, move);
-    console.log(`Posting ${e.symbol}:\n${mainText}`);
-    const mainTweet = await twitter.v2.tweet(mainText);
+    // Extra metrics + logo URL (non-fatal)
+    const extras = await getExtras(e.symbol);
 
-    // Save to DB immediately after main post succeeds, before the reply
+    // Commentary anchored to release coverage
+    const commentary = await generateCommentary(e, move);
+
+    // Images: chart, logo, CEO — all non-fatal
+    const images = await gatherImages(e.symbol, extras.logoUrl);
+    const mediaIds = [];
+    for (const img of images.slice(0, 4)) {
+      try {
+        const id = await twitter.v1.uploadMedia(img.buffer, { mimeType: img.mimeType });
+        mediaIds.push(id);
+      } catch (err) {
+        console.log(`Media upload failed for ${e.symbol}: ${err.message}`);
+      }
+    }
+
+    const mainText = buildMainTweet(e, move, extras, commentary);
+    console.log(`Posting ${e.symbol} with ${mediaIds.length} image(s):\n${mainText}`);
+    await twitter.v2.tweet(
+      mediaIds.length > 0
+        ? { text: mainText, media: { media_ids: mediaIds } }
+        : { text: mainText }
+    );
+
+    // Save to DB immediately after the post succeeds
     await db.query(
       'INSERT INTO posted_earnings (symbol, report_date) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [e.symbol, e.date]
     );
     posted++;
-
-    // Threaded engagement reply — failure here must not block anything
-    try {
-      const take = await generateTake(e, move);
-      await twitter.v2.reply(take, mainTweet.data.id);
-      console.log(`Reply posted for ${e.symbol}`);
-    } catch (err) {
-      console.log(`Reply failed for ${e.symbol}: ${err.message}`);
-    }
   }
 
   console.log(`Done — posted ${posted} earnings update(s).`);
