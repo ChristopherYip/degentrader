@@ -133,7 +133,7 @@ async function main() {
   await mkdir(logosDir, { recursive: true });
   await mkdir(ceosDir, { recursive: true });
 
-  const missLog = path.join(ASSETS_DIR, 'misses.log');
+  const missLog = path.join(ASSETS_DIR, 'misses.txt');
   const manifest = {};
   let fmpCalls = 0;
 
@@ -186,6 +186,14 @@ async function main() {
       let imgUrl = await wikiPageImage(ceoName);
       let matchedTitle = ceoName;
       await sleep(WIKI_DELAY_MS);
+      if (!imgUrl) {
+        const noInitials = ceoName.replace(/\s+[A-Z]\.(?=\s)/g, '').trim();
+        if (noInitials !== ceoName) {
+          imgUrl = await wikiPageImage(noInitials);
+          if (imgUrl) matchedTitle = noInitials;
+          await sleep(WIKI_DELAY_MS);
+        }
+      }
       if (!imgUrl) {
         const fallback = await wikiSearchImage(ceoName);
         if (fallback) ({ img: imgUrl, matchedTitle } = fallback);
