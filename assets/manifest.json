@@ -1,1 +1,26 @@
-{}
+{
+  "NOW": {
+    "ceo": "Bill McDermott",
+    "wikipediaTitle": "Bill McDermott",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/SAP_ExecutiveBoard_McDermott_002.jpg/960px-SAP_ExecutiveBoard_McDermott_002.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "ORCL": {
+    "ceo": "Clay Magouyrk",
+    "wikipediaTitle": "Safra Catz",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/1/1a/Safra_Catz_Oracle_CloudWorld_2024.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "CRM": {
+    "ceo": "Marc Benioff",
+    "wikipediaTitle": "Marc Benioff",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Marc_Benioff.jpg/960px-Marc_Benioff.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  },
+  "SMCI": {
+    "ceo": "Charles Liang",
+    "wikipediaTitle": "Charles Liang",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/4/40/Charles_Liang_2025.jpg",
+    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
+  }
+}
