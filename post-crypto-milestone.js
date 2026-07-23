@@ -215,8 +215,9 @@ async function buildCandlestickChart(coin, intraday, milestone) {
       scales: {
         x: {
           type: 'timeseries',
-          time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } },
-          ticks: { color: BNB_TEXT, maxTicksLimit: 6, font: { size: 14 } },
+          display: true,
+          time: { unit: 'minute', displayFormats: { minute: 'HH:mm', hour: 'HH:mm' } },
+          ticks: { color: BNB_TEXT, maxTicksLimit: 10, maxRotation: 0, font: { size: 14 } },
           grid: { display: false },
         },
         y: {
