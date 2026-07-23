@@ -20,8 +20,19 @@ const ASSETS_DIR = 'assets';
 
 // Paste your full ~129-ticker watchlist here (same order as post-earnings.js):
 const WATCHLIST = [
-  'NVDA', 'TSLA', 'NFLX', 'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'META', 'AMD', 'PLTR',
-  // ...rest of watchlist
+  'NVDA','TSLA','SPCX','PLTR','AAPL','MSFT','AMZN','GOOGL','META','NFLX',
+  'AMD','AVGO','MU','MRVL','NOW','ORCL','CRM','SMCI','ARM','TSM',
+  'ASML','COIN','HOOD','MSTR','RDDT','ASTS','RKLB','NBIS','CRWV','APP',
+  'GME','AMC','WEN','SOFI','IONQ','RGTI','QBTS','OKLO','SMR','HIMS',
+  'TEM','CRCL','FIG','CVNA','AFRM','UPST','MARA','RIOT','CLSK','SOUN',
+  'BBAI','ACHR','JOBY','LUNR','POET','PATH','DKNG','RBLX','U','SNAP',
+  'PINS','SPOT','ROKU','VRT','ANET','DELL','SNOW','CRWD','PANW','NET',
+  'DDOG','MDB','LRCX','AMAT','KLAC','INTC','QCOM','TXN','IBM','ADBE',
+  'SHOP','UBER','LYFT','ABNB','DASH','ZM','PYPL','XYZ','TTD','DUOL',
+  'AXON','RIVN','LCID','NIO','F','GM','BA','GE','GEV','CAT',
+  'VST','CEG','JPM','GS','MS','BAC','V','MA','BABA','JD',
+  'PDD','DIS','WMT','COST','TGT','HD','SBUX','CMG','NKE','LULU',
+  'CELH','ELF','LLY','UNH','NVO','MRNA','XOM','DAL','UAL',
 ];
 
 // FMP `ceo` values are sometimes stale or formatted oddly. Hard overrides win.
