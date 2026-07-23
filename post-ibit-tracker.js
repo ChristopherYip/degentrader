@@ -220,9 +220,9 @@ async function main() {
     accessSecret: process.env.X_ACCESS_SECRET,
   });
 
-  const mediaIds = [await client.v1.uploadMedia(chartBuffer, { mimeType: 'image/png' })];
+const mediaIds = [];
 
-  // ---- Fink image: validate real type, never let it block the post ----
+  // ---- Fink image first: validate real type, never let it block the post ----
   if (fs.existsSync(FINK_IMAGE_PATH)) {
     try {
       const finkBuffer = fs.readFileSync(FINK_IMAGE_PATH);
@@ -238,6 +238,9 @@ async function main() {
       console.warn('Fink image upload failed, posting without it:', e.message);
     }
   }
+
+  // ---- chart second ----
+  mediaIds.push(await client.v1.uploadMedia(chartBuffer, { mimeType: 'image/png' }));
 
   const tweet = await client.v2.tweet({ text, media: { media_ids: mediaIds } });
   console.log(`Posted: ${tweet.data.id}`);
