@@ -12,7 +12,7 @@ const { Client } = pg;
 
 const FARSIDE_URL = 'https://farside.co.uk/btc/';
 const FMP_KEY = process.env.FMP_API_KEY;
-const FINK_IMAGE_PATH = './assets/fink.jpg'; // optional — only attached if file exists and is a valid image
+const FINK_IMAGE_PATH = './assets/ceos/fink.jpg'; // optional — only attached if file exists and is a valid image
 
 // ---- time window: only attempt between 18:00 and 23:59 ET ----
 function inWindow() {
@@ -87,35 +87,45 @@ async function getBtcPrice() {
 }
 
 // ---- QuickChart: last 7 daily flows, green/red bars ----
+// ---- QuickChart: last 7 daily flows, Google Finance style ----
 function buildChartUrl(rows) {
   const labels = rows.map(r =>
     new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   );
   const values = rows.map(r => Math.round(r.flow * 10) / 10);
-  const colors = values.map(v => (v >= 0 ? '#22c55e' : '#ef4444'));
+  const colors = values.map(v => (v >= 0 ? '#137333' : '#d93025'));
   const config = {
     type: 'bar',
-    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 4 }] },
+    data: {
+      labels,
+      datasets: [{ data: values, backgroundColor: colors, borderRadius: 3, barPercentage: 0.6 }],
+    },
     options: {
       plugins: {
         legend: { display: false },
         title: {
           display: true,
-          text: 'IBIT DAILY FLOWS (US$M)',
-          color: '#d4af37',
-          font: { family: 'monospace', size: 20, weight: 'bold' },
+          text: 'IBIT daily net flows (US$M)',
+          color: '#202124',
+          align: 'start',
+          font: { family: 'Roboto, Arial, sans-serif', size: 18, weight: 'normal' },
+          padding: { bottom: 16 },
         },
       },
       scales: {
-        x: { ticks: { color: '#e0e1dd', font: { family: 'monospace' } }, grid: { display: false } },
+        x: {
+          ticks: { color: '#5f6368', font: { family: 'Roboto, Arial, sans-serif', size: 12 } },
+          grid: { display: false, drawBorder: true, borderColor: '#dadce0' },
+        },
         y: {
-          ticks: { color: '#e0e1dd', font: { family: 'monospace' } },
-          grid: { color: 'rgba(255,255,255,0.08)' },
+          position: 'right',
+          ticks: { color: '#5f6368', font: { family: 'Roboto, Arial, sans-serif', size: 12 } },
+          grid: { color: '#e8eaed', drawBorder: false },
         },
       },
     },
   };
-  return `https://quickchart.io/chart?v=3&w=800&h=450&bkg=${encodeURIComponent('#0d1b2a')}&c=${encodeURIComponent(JSON.stringify(config))}`;
+  return `https://quickchart.io/chart?v=3&w=800&h=450&bkg=white&c=${encodeURIComponent(JSON.stringify(config))}`;
 }
 
 function fmtM(n) {
