@@ -1,7 +1,10 @@
 // post-crypto-milestone.js
 // "JUST IN" alerts when BTC crosses a $1,000 milestone or ETH crosses a $100 milestone.
-// Includes a 1-minute intraday chart image: green line if crossing up, red if crossing down,
-// with a gold dashed line marking the milestone price.
+// Market data: Binance public REST API (no API key needed).
+//   - Tries api.binance.com first; falls back to api.binance.us if geo-blocked (HTTP 451).
+// Chart: Binance-style 1-minute CANDLESTICK chart (green/red candles, dark charcoal bg,
+//   yellow dashed milestone line, price axis on the right). Falls back to a Binance-styled
+//   line chart if candlestick rendering fails, then to text-only.
 // Runs every 5 minutes via Railway cron: */5 * * * *
 //
 // Anti-spam rules (tunable in Config below):
@@ -18,20 +21,24 @@ import fetch from 'node-fetch';
 // ---------- Config ----------
 
 const COINS = [
-  { symbol: 'BTCUSD', name: 'Bitcoin', hashtag: '#Bitcoin', cashtag: '$BTC', step: 1000, buffer: 150 },
-  { symbol: 'ETHUSD', name: 'Ethereum', hashtag: '#Ethereum', cashtag: '$ETH', step: 100, buffer: 15 },
+  { symbol: 'BTCUSDT', name: 'Bitcoin', hashtag: '#Bitcoin', cashtag: '$BTC', step: 1000, buffer: 150 },
+  { symbol: 'ETHUSDT', name: 'Ethereum', hashtag: '#Ethereum', cashtag: '$ETH', step: 100, buffer: 15 },
 ];
+
+const BINANCE_HOSTS = ['https://api.binance.com', 'https://api.binance.us'];
 
 const MIN_GAP_MINUTES = 180; // at most one post per coin every 3 hours
 const REPEAT_HOURS = 24;     // same milestone+direction won't repost within 24h
 const CHART_MINUTES = 120;   // how much intraday history to show on the chart
 
-// Brand colors
-const BG_NAVY = '#0a1628';
-const GOLD = '#fbbf24';
-const GREEN = '#22c55e';
-const RED = '#ef4444';
-const MUTED = '#94a3b8';
+// Binance chart palette
+const BNB_BG = '#181A20';      // app background (near-black charcoal)
+const BNB_GREEN = '#0ECB81';   // up candles
+const BNB_RED = '#F6465D';     // down candles
+const BNB_YELLOW = '#F0B90B';  // Binance yellow (milestone line)
+const BNB_TEXT = '#848E9C';    // axis gray
+const BNB_GRID = '#2B3139';    // faint gridlines
+const BNB_WHITE = '#EAECEF';   // title text
 
 // Variety pools so back-to-back posts don't sound alike
 const STYLE_ANGLES = [
@@ -83,127 +90,233 @@ function fmt(n) {
   return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
-async function getPrice(symbol) {
-  const url = `https://financialmodelingprep.com/stable/quote?symbol=${symbol}&apikey=${process.env.FMP_API_KEY}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`FMP ${symbol} HTTP ${res.status}`);
-  const data = await res.json();
-  const quote = Array.isArray(data) ? data[0] : data;
-  if (!quote || typeof quote.price !== 'number') {
-    throw new Error(`FMP ${symbol}: no price in response: ${JSON.stringify(data).slice(0, 200)}`);
-  }
-  return quote.price;
+function pairLabel(symbol) {
+  return symbol.replace('USDT', '/USDT'); // BTCUSDT -> BTC/USDT
 }
 
-// Fetch recent intraday candles, newest-first from FMP, returned oldest-first.
-// Tries 1min, falls back to 5min.
-async function getIntraday(symbol) {
-  for (const interval of ['1min', '5min']) {
+// GET from Binance, trying each host in order. 451 = geo-blocked, move to next host.
+async function binanceGet(path) {
+  let lastErr;
+  for (const host of BINANCE_HOSTS) {
     try {
-      const url = `https://financialmodelingprep.com/stable/historical-chart/${interval}?symbol=${symbol}&apikey=${process.env.FMP_API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const data = await res.json();
+      const res = await fetch(`${host}${path}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      lastErr = new Error(`${host} HTTP ${res.status}`);
+      console.error(`Binance: ${host}${path} -> HTTP ${res.status}, trying next host`);
+    } catch (err) {
+      lastErr = err;
+      console.error(`Binance: ${host}${path} failed:`, err.message);
+    }
+  }
+  throw lastErr;
+}
+
+async function getPrice(symbol) {
+  const data = await binanceGet(`/api/v3/ticker/price?symbol=${symbol}`);
+  const price = parseFloat(data?.price);
+  if (!Number.isFinite(price)) {
+    throw new Error(`Binance ${symbol}: no price in response: ${JSON.stringify(data).slice(0, 200)}`);
+  }
+  return price;
+}
+
+// Fetch recent klines (candles) with full OHLC, oldest-first. Tries 1m, falls back to 5m.
+// Kline array format: [0]=openTime(ms), [1]=open, [2]=high, [3]=low, [4]=close, ...
+async function getIntraday(symbol) {
+  for (const interval of ['1m', '5m']) {
+    try {
+      const limit = interval === '1m' ? CHART_MINUTES : Math.ceil(CHART_MINUTES / 5);
+      const data = await binanceGet(`/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
       if (Array.isArray(data) && data.length > 5) {
-        const count = interval === '1min' ? CHART_MINUTES : Math.ceil(CHART_MINUTES / 5);
-        return { interval, points: data.slice(0, count).reverse() };
+        const candles = data.map((k) => ({
+          x: k[0], // open time in ms
+          o: parseFloat(k[1]),
+          h: parseFloat(k[2]),
+          l: parseFloat(k[3]),
+          c: parseFloat(k[4]),
+        }));
+        return { interval, candles };
       }
     } catch (err) {
-      console.error(`FMP intraday ${interval} ${symbol} failed:`, err.message);
+      console.error(`Binance klines ${interval} ${symbol} failed:`, err.message);
     }
   }
   return null;
 }
 
-// Render the chart via QuickChart, return a PNG Buffer (or null on failure).
-async function buildChartImage(coin, intraday, direction, milestone) {
-  try {
-    const { interval, points } = intraday;
-    const labels = points.map((p) => p.date.slice(11, 16)); // "HH:MM"
-    const prices = points.map((p) => p.close);
-    const lineColor = direction === 'up' ? GREEN : RED;
-    const fillColor = direction === 'up' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
+async function renderQuickChart(chartConfig, version) {
+  const res = await fetch('https://quickchart.io/chart', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chart: chartConfig,
+      width: 1200,
+      height: 675,
+      backgroundColor: BNB_BG,
+      format: 'png',
+      version,
+    }),
+  });
+  if (!res.ok) throw new Error(`QuickChart HTTP ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
 
-    const chartConfig = {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [
-          {
-            data: prices,
-            borderColor: lineColor,
-            backgroundColor: fillColor,
-            fill: true,
-            pointRadius: 0,
-            borderWidth: 3,
-            lineTension: 0.1,
-          },
-        ],
-      },
-      options: {
+// Primary: Binance-style candlestick chart (Chart.js v3 financial charts).
+async function buildCandlestickChart(coin, intraday, milestone) {
+  const { interval, candles } = intraday;
+
+  const chartConfig = {
+    type: 'candlestick',
+    data: {
+      datasets: [
+        {
+          label: pairLabel(coin.symbol),
+          data: candles,
+          color: { up: BNB_GREEN, down: BNB_RED, unchanged: BNB_TEXT },
+          borderColor: { up: BNB_GREEN, down: BNB_RED, unchanged: BNB_TEXT },
+        },
+      ],
+    },
+    options: {
+      plugins: {
         legend: { display: false },
         title: {
           display: true,
-          text: `${coin.name} — ${interval} chart`,
-          fontColor: GOLD,
-          fontSize: 20,
-        },
-        scales: {
-          xAxes: [
-            {
-              ticks: { fontColor: MUTED, maxTicksLimit: 6, fontSize: 14 },
-              gridLines: { display: false },
-            },
-          ],
-          yAxes: [
-            {
-              ticks: { fontColor: MUTED, fontSize: 14 },
-              gridLines: { color: 'rgba(148,163,184,0.15)' },
-            },
-          ],
+          text: `${pairLabel(coin.symbol)} · ${interval}`,
+          color: BNB_WHITE,
+          align: 'start',
+          font: { size: 22, weight: 'bold' },
+          padding: { top: 12, bottom: 12 },
         },
         annotation: {
-          annotations: [
-            {
+          annotations: {
+            milestoneLine: {
               type: 'line',
-              mode: 'horizontal',
-              scaleID: 'y-axis-0',
-              value: milestone,
-              borderColor: GOLD,
+              yMin: milestone,
+              yMax: milestone,
+              borderColor: BNB_YELLOW,
               borderWidth: 2,
               borderDash: [6, 6],
               label: {
                 enabled: true,
+                display: true,
                 content: fmt(milestone),
-                backgroundColor: GOLD,
-                fontColor: BG_NAVY,
-                fontStyle: 'bold',
+                backgroundColor: BNB_YELLOW,
+                color: BNB_BG,
+                font: { weight: 'bold' },
+                position: 'start',
               },
             },
-          ],
+          },
         },
       },
-    };
+      scales: {
+        x: {
+          type: 'timeseries',
+          time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } },
+          ticks: { color: BNB_TEXT, maxTicksLimit: 6, font: { size: 14 } },
+          grid: { display: false },
+        },
+        y: {
+          position: 'right',
+          ticks: { color: BNB_TEXT, font: { size: 14 } },
+          grid: { color: BNB_GRID },
+        },
+      },
+    },
+  };
 
-    const res = await fetch('https://quickchart.io/chart', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chart: chartConfig,
-        width: 1200,
-        height: 675,
-        backgroundColor: BG_NAVY,
-        format: 'png',
-        version: '2',
-      }),
-    });
-    if (!res.ok) throw new Error(`QuickChart HTTP ${res.status}`);
-    const arrayBuffer = await res.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+  return renderQuickChart(chartConfig, '3');
+}
+
+// Fallback: Binance-styled line chart (Chart.js v2), green if up-cross, red if down-cross.
+async function buildLineChart(coin, intraday, direction, milestone) {
+  const { interval, candles } = intraday;
+  const labels = candles.map((p) => new Date(p.x).toISOString().slice(11, 16)); // "HH:MM" UTC
+  const prices = candles.map((p) => p.c);
+  const lineColor = direction === 'up' ? BNB_GREEN : BNB_RED;
+  const fillColor = direction === 'up' ? 'rgba(14,203,129,0.12)' : 'rgba(246,70,93,0.12)';
+
+  const chartConfig = {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          data: prices,
+          borderColor: lineColor,
+          backgroundColor: fillColor,
+          fill: true,
+          pointRadius: 0,
+          borderWidth: 3,
+          lineTension: 0.1,
+        },
+      ],
+    },
+    options: {
+      legend: { display: false },
+      title: {
+        display: true,
+        text: `${pairLabel(coin.symbol)} · ${interval}`,
+        fontColor: BNB_WHITE,
+        fontSize: 20,
+      },
+      scales: {
+        xAxes: [
+          {
+            ticks: { fontColor: BNB_TEXT, maxTicksLimit: 6, fontSize: 14 },
+            gridLines: { display: false },
+          },
+        ],
+        yAxes: [
+          {
+            position: 'right',
+            ticks: { fontColor: BNB_TEXT, fontSize: 14 },
+            gridLines: { color: BNB_GRID },
+          },
+        ],
+      },
+      annotation: {
+        annotations: [
+          {
+            type: 'line',
+            mode: 'horizontal',
+            scaleID: 'y-axis-0',
+            value: milestone,
+            borderColor: BNB_YELLOW,
+            borderWidth: 2,
+            borderDash: [6, 6],
+            label: {
+              enabled: true,
+              content: fmt(milestone),
+              backgroundColor: BNB_YELLOW,
+              fontColor: BNB_BG,
+              fontStyle: 'bold',
+            },
+          },
+        ],
+      },
+    },
+  };
+
+  return renderQuickChart(chartConfig, '2');
+}
+
+// Try candlestick first, fall back to line chart, return null if both fail.
+async function buildChartImage(coin, intraday, direction, milestone) {
+  try {
+    return await buildCandlestickChart(coin, intraday, milestone);
   } catch (err) {
-    console.error(`${coin.symbol}: chart generation failed:`, err.message);
-    return null;
+    console.error(`${coin.symbol}: candlestick render failed, trying line chart:`, err.message);
   }
+  try {
+    return await buildLineChart(coin, intraday, direction, milestone);
+  } catch (err) {
+    console.error(`${coin.symbol}: line chart render failed:`, err.message);
+  }
+  return null;
 }
 
 async function generateTake(coin, milestone, direction, price, usedTakes = []) {
@@ -359,7 +472,7 @@ async function run() {
         [coin.symbol, price, newBucket, milestone, direction]
       );
 
-      // Build chart image (null if anything fails — we post text-only in that case)
+      // Build chart image (null if everything fails — we post text-only in that case)
       const intraday = await getIntraday(coin.symbol);
       const chartBuffer = intraday
         ? await buildChartImage(coin, intraday, direction, milestone)
