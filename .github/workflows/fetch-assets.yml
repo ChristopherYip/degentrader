@@ -1,0 +1,30 @@
+name: Fetch earnings assets (one-time)
+
+on:
+  workflow_dispatch:   # manual trigger only — never runs on its own
+
+permissions:
+  contents: write      # allows the workflow to commit the assets back
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run asset fetcher
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+        run: node fetch-assets.js
+
+      - name: Commit assets
+        run: |
+          git config user.name "asset-bot"
+          git config user.email "actions@github.com"
+          git add assets/
+          git diff --cached --quiet || git commit -m "Add ticker logos and CEO images"
+          git push
