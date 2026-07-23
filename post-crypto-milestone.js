@@ -184,7 +184,7 @@ async function buildCandlestickChart(coin, intraday, milestone) {
         legend: { display: false },
         title: {
           display: true,
-          text: `${pairLabel(coin.symbol)} · ${interval}`,
+          text: `${pairLabel(coin.symbol)} · ${interval} (UTC)`,
           color: BNB_WHITE,
           align: 'start',
           font: { size: 22, weight: 'bold' },
@@ -260,14 +260,14 @@ async function buildLineChart(coin, intraday, direction, milestone) {
       legend: { display: false },
       title: {
         display: true,
-        text: `${pairLabel(coin.symbol)} · ${interval}`,
+        text: `${pairLabel(coin.symbol)} · ${interval} (UTC)`,
         fontColor: BNB_WHITE,
         fontSize: 20,
       },
       scales: {
         xAxes: [
           {
-            ticks: { fontColor: BNB_TEXT, maxTicksLimit: 6, fontSize: 14 },
+            ticks: { fontColor: BNB_TEXT, maxTicksLimit: 10, fontSize: 14 },
             gridLines: { display: false },
           },
         ],
