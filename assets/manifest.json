@@ -1,50 +1,32 @@
 {
-  "NVDA": {
-    "ceo": "Jensen Huang",
-    "wikipediaTitle": "Jensen Huang",
-    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/e/e6/Jen-Hsun_Huang_2025.jpg",
-    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
-  },
-  "TSLA": {
-    "ceo": "Elon R. Musk",
-    "wikipediaTitle": "Elon R. Musk",
+  "SPCX": {
+    "ceo": "Elon Musk",
+    "wikipediaTitle": "Elon Musk",
     "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Elon_Musk_-_54820081119_%28cropped%29.jpg/960px-Elon_Musk_-_54820081119_%28cropped%29.jpg",
     "license": "Wikimedia Commons — verify per-file license before commercial reuse"
   },
-  "NFLX": {
-    "ceo": "Ted Sarandos",
-    "wikipediaTitle": "Ted Sarandos",
-    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b4/Ted_Sarandos_2024.jpg/960px-Ted_Sarandos_2024.jpg",
+  "GOOGL": {
+    "ceo": "Sundar Pichai",
+    "wikipediaTitle": "Sundar Pichai",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/c/c3/Sundar_Pichai_-_2023_%28cropped%29.jpg",
     "license": "Wikimedia Commons — verify per-file license before commercial reuse"
   },
-  "AAPL": {
-    "ceo": "Timothy D. Cook",
-    "wikipediaTitle": "Timothy D. Cook",
-    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/f/f7/Tim_Cook_March_2026_%28cropped_2%29.jpg",
+  "AMD": {
+    "ceo": "Lisa T. Su",
+    "wikipediaTitle": "Lisa Su",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/de/SXSW-2024-alih-OB7A0861-Lisa_Su_%28cropped_2%29.jpg/960px-SXSW-2024-alih-OB7A0861-Lisa_Su_%28cropped_2%29.jpg",
     "license": "Wikimedia Commons — verify per-file license before commercial reuse"
   },
-  "MSFT": {
-    "ceo": "Satya Nadella",
-    "wikipediaTitle": "Satya Nadella",
-    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/MS-Exec-Nadella-Satya-2017-08-31-22_%28cropped%29.jpg/960px-MS-Exec-Nadella-Satya-2017-08-31-22_%28cropped%29.jpg",
+  "AVGO": {
+    "ceo": "Hock E. Tan",
+    "wikipediaTitle": "Hock E. Tan",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Hock_Tan_2022.png/960px-Hock_Tan_2022.png",
     "license": "Wikimedia Commons — verify per-file license before commercial reuse"
   },
-  "AMZN": {
-    "ceo": "Andrew R. Jassy",
-    "wikipediaTitle": "Andrew R. Jassy",
-    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Andy_Jassy.jpg/960px-Andy_Jassy.jpg",
-    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
-  },
-  "META": {
-    "ceo": "Mark Elliot Zuckerberg",
-    "wikipediaTitle": "Mark Elliot Zuckerberg",
-    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/0/0e/F20250904AH-2824_%2854778373111%29_%283x4_cropped_on_Zuckerberg_following_the_rule_of_thirds%29.jpg",
-    "license": "Wikimedia Commons — verify per-file license before commercial reuse"
-  },
-  "PLTR": {
-    "ceo": "Alexander C. Karp",
-    "wikipediaTitle": "Palantir",
-    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Palantir_1_2018-09-06.jpg/960px-Palantir_1_2018-09-06.jpg",
+  "MU": {
+    "ceo": "Sanjay Mehrotra",
+    "wikipediaTitle": "Sanjay Mehrotra",
+    "ceoImageSource": "https://upload.wikimedia.org/wikipedia/commons/d/de/Sanjay_Mehrotra_2025_%28cropped%29.jpg",
     "license": "Wikimedia Commons — verify per-file license before commercial reuse"
   }
 }
